@@ -1,66 +1,40 @@
-# 深空制图仪 · Gesture-controlled Globe
+# 旅行地球仪 · 本地照片版
 
-用手掌拨动地球，在粒子星空中观察城市、航线与月球。基于 p5.js 和 MediaPipe Hands 的浏览器交互作品，也支持鼠标和键盘操作。
+基于原版「深空制图仪」的本地旅行相册。把手机照片导入电脑上的项目，地球按照片位置显示旅行城市；选中城市后，可用手势或按钮浏览照片。地球绘制仍使用 p5.js，手部关键点由随项目提供的 MediaPipe Hands 模型在浏览器内识别。
 
-A browser-based interactive globe with hand tracking, a particle starfield, city lights and animated routes. Built with p5.js and MediaPipe Hands; mouse and keyboard controls are also available.
+## 启动
 
-![深空制图仪运行画面](docs/preview.png)
-
-## 快速开始
-
-无需构建，也不需要 npm 安装。下载完整仓库后，用本地 HTTP 服务器打开，避免直接双击 `index.html`。
-
-**VS Code：** 安装 Live Server 扩展，右键 `index.html` → **Open with Live Server**。
-
-**或使用 Python 3：**
+在 macOS 终端运行：
 
 ```sh
-git clone https://github.com/wenkesun-creator/globe.git
-cd globe
-python3 -m http.server 8000 --bind 127.0.0.1
+cd /Users/johnsonxu/globe
+python3 server.py
 ```
 
-打开 <http://127.0.0.1:8000>。要使用手势，请允许摄像头访问；拒绝授权或没有摄像头时，可以使用鼠标。停止服务器按 `Ctrl+C`。
+打开 <http://127.0.0.1:8000>。如果原来的 `python3 -m http.server 8000` 仍在运行，先到那个终端按 `Control + C`。新版必须用 `server.py`，因为静态文件服务器不能保存照片。
 
-使用支持摄像头和 WebAssembly 的现代桌面浏览器。远程部署时应使用 HTTPS；普通远程 HTTP 地址可能无法访问摄像头。移动端尚未完成手势兼容性测试。
+导入 HEIC 照片需要 `heif-convert`。如果终端提示缺少它，可运行 `brew install libheif`。JPG、PNG 无需这个命令。照片处理使用 macOS 自带的 Swift、ImageIO 和 `sips`。项目无需 npm 或云服务。
 
-## 操作
+## 使用
 
-| 操作 | 效果 |
-| --- | --- |
-| 手掌移动 | 转动地球 |
-| 五指收拢 / 张开 | 缩小 / 放大 |
-| 比耶并保持片刻 | 触发流星雨 |
-| 拇指与食指连续捏合两次 | 进入城市观察者模式 |
-| 观察者模式下摆手 | 切换重点城市 |
-| 五指聚拢后轻摆两次 | 退出观察者模式 |
-| 鼠标拖拽 / 滚轮 | 转动 / 缩放 |
-| 点击城市 | 聚焦城市；长按拖拽可退出 |
-| 空格 | 暂停 / 恢复自转 |
-| `c` / `f` | 切换摄像头 / 航线 |
-| `r` / `s` | 复位视角 / 保存 PNG |
-| `u` | 隐藏 / 显示界面 |
+1. 点击「添加照片」，选择 JPG、PNG 或 HEIC 原图。项目读取照片自带的 GPS 和拍摄时间，并保存原图与浏览预览图到 `local_photos/`。
+2. 有 GPS 的照片自动归入距坐标 80 公里内的项目城市；附近没有已知城市时按坐标标记。无 GPS 的照片进入「待归类」，在页面选择城市。相册内可以修改某张照片的归属城市。
+3. 在全球模式单手移动旋转地球，双手拉开放大；对准有照片的地点且放大到 1.75 倍以上，进入城市。也可直接点击右侧城市按钮。
+4. 城市模式下握拳左右摆动切换有照片的地点。停稳后张开手掌，打开相册；双手靠近缩小到 1.30 倍以下返回全球。
+5. 相册中张掌左右摆动翻页；握拳保持返回城市。按钮、方向键和 `Esc` 也可操作。
 
-页面左下角有带图示的“详细教程”。更多操作、参数与排错见 [操作与参数指南](docs/GUIDE.md)。
+每次摆动只触发一次，停稳后才接受下一次。进入新状态有短暂保护时间，避免张掌打开相册时立刻翻页。双手出现时只处理缩放。所有模式都可以通过页面按钮完成主要操作。
 
-## 摄像头与数据
+## 数据与回退
 
-手部识别在浏览器本地执行。项目自有代码没有上传摄像头画面或手势数据的接口；p5.js、MediaPipe 的脚本、模型和 WASM 随仓库提供。完整下载后可通过本地服务器离线运行。网页托管服务可能保留普通访问日志。
+照片原件、预览图和 `photos.json` 都保存在本机 `local_photos/`，该目录已被 Git 忽略。网页服务只监听 `127.0.0.1`。坐标转城市使用项目已有的离线城市表，不会把照片或坐标发送到地图服务。80 公里归类是初步判断，可在相册中修正。
 
-航线、卫星及天体运动用于艺术化展示，不是实时航班、卫星追踪或科学观测数据。
+新版位于 `photo-album-v1` 分支；原版保持在 `main`。停止服务器后运行 `git switch main`，再按原版方式启动，即可回退界面和手势。运行 `git switch photo-album-v1` 可返回新版。两次切换都不会删除本地照片。详见 [版本说明](docs/TRAVEL_ALBUM.md)。
 
-## 项目结构
+## 当前限制
 
-- `index.html`、`css/style.css`：界面与操作教程。
-- `sketch.js`：绘制、手势识别、鼠标和键盘交互。
-- `assets/earth.jpg`：用于识别海陆的地球贴图。
-- `assets/mediapipe/`、`js/p5.min.js`：随项目分发的第三方依赖。
-- `docs/`：运行截图和详细指南。
+- 手势阈值已加停稳与模式保护，但实际手感仍需用真实摄像头、不同光线和距离测试。
+- 离线城市表覆盖项目内已有城市；其它地点先以坐标标签显示，可手动归属到已知城市。
+- 单张照片最大 40 MB。第一版不处理 Live Photo 视频、批量删除和云端同步。
 
-## 反馈与贡献
-
-欢迎提交 [Issue](https://github.com/wenkesun-creator/globe/issues) 或 Pull Request。反馈问题时请附浏览器版本、操作系统、复现步骤和控制台报错；请勿上传含私人画面的摄像头录像。
-
-## 许可
-
-原创项目代码采用 [MIT License](LICENSE)，允许在保留版权和许可声明的条件下使用、修改和商用。第三方库和素材不自动适用 MIT，请分别查看 [第三方声明](THIRD_PARTY_NOTICES.md)。
+原项目版权与第三方许可仍见 [LICENSE](LICENSE) 与 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。

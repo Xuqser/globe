@@ -735,6 +735,7 @@ function setup() {
   setupDetect();
   initHands();            // 启动手部识别（不在线，全部读本地文件）
   initTutorial();
+  albumInit();
   document.addEventListener("visibilitychange", onVisibilityChange);
   fpsT0 = millis();
 
@@ -1821,14 +1822,6 @@ function draw() {
     // 转动已经在 onHandResults 里直接加到 rotY / rotX 上了（完全跟手）
     hasInput = usingHandsNow;
     if (usingHandsNow) zoomInput = handZoom;
-  } else {
-    const g = readGesture();
-    if (g) {
-      inputVX = g.vx;
-      inputVY = g.vy;
-      hasInput = g.n >= MIN_MOTION;
-      if (g.n > 60) zoomInput = g.spread;
-    }
   }
 
   if (hasInput) {
@@ -1873,7 +1866,7 @@ function draw() {
 
   const focusing = updateCityFocus(dtSec);
   updateObserverLabelBoosts(dtSec);
-  if (autoSpin && !focusing && !dragging && !usingHandsNow && silence > 150 && spinY === 0) rotY += AUTO_SPIN * dtScale;
+  if (album.mode === "globe" && autoSpin && !focusing && !dragging && !usingHandsNow && silence > 150 && spinY === 0) rotY += AUTO_SPIN * dtScale;
   rotX = constrain(rotX, -1.3, 1.3);
 
   // 3) 缩放平滑
@@ -3009,7 +3002,7 @@ function initTutorial() {
 }
 
 function tutorialBackgroundElements() {
-  return document.querySelectorAll("#hud, #hint, #key-hint, #landscape-button, #landscape-help, #tutorial-button, #observer-city, #meteor-shower-label, #observer-toast, #left-scrim, canvas");
+  return document.querySelectorAll("#hud, #hint, #key-hint, #landscape-button, #landscape-help, #tutorial-button, #observer-city, #meteor-shower-label, #observer-toast, #left-scrim, #travel-panel, #travel-gallery, canvas");
 }
 
 function setTutorialBackgroundInert(inert) {
@@ -3218,7 +3211,7 @@ function handleCityClick(x, y) {
     const nearPoint = Math.hypot(x - c.x, y - c.y) <= CITY_CLICK_RADIUS;
     const insideText = c.rect && x >= c.rect.x1 && x <= c.rect.x2 && y >= c.rect.y1 && y <= c.rect.y2;
     if (nearPoint || insideText) {
-      enterCityMode(c.name);
+      if (albumHasCity(c.name)) albumEnterCity(c.name);
       return;
     }
   }
@@ -3346,7 +3339,7 @@ function drawStatus() {
   else if (!cameraOk) setCamStatus("摄像头启动中");
   else if (handRecovering) setCamStatus("识别重连中（" + Math.min(handRecoveryAttempts, HAND_RECOVERY_ATTEMPTS) + "/" + HAND_RECOVERY_ATTEMPTS + "）");
   else if (handUnavailable) setCamStatus("识别暂不可用");
-  else if (!handReady) setCamStatus("画面运动模式");
+  else if (!handReady) setCamStatus("手势不可用 · 鼠标操作");
   else if (millis() < victoryFeedbackUntil) setCamStatus("✌️ 流星雨");
   else if (usingHandsNow) setCamStatus("识别中 · " + handCount + " 只手");
   else setCamStatus("待机");
@@ -3407,7 +3400,7 @@ function initHands() {
   try {
     const instance = new Hands({ locateFile: (f) => "assets/mediapipe/" + f });
     instance.setOptions({
-      maxNumHands: 1,
+      maxNumHands: 2,
       modelComplexity: 0,        // 0 = 轻量模型（快一倍，够用）；1 = 完整模型（更准但更吃 CPU）
       minDetectionConfidence: 0.6,
       minTrackingConfidence: 0.6
@@ -3554,103 +3547,11 @@ function palmCenter(lm) {
   return { x: x / ids.length, y: y / ids.length };
 }
 
-function handDist3(a, b) {
-  const dz = (a.z || 0) - (b.z || 0);
-  return Math.hypot(a.x - b.x, a.y - b.y, dz);
-}
-
 function fingerExtension(lm, tip, pip) {
   const wrist = lm[0];
   const dTip = Math.hypot(lm[tip].x - wrist.x, lm[tip].y - wrist.y);
   const dPip = Math.hypot(lm[pip].x - wrist.x, lm[pip].y - wrist.y) || 0.001;
   return dTip / dPip;
-}
-
-function fingerStraight(lm, tip, mcp) {
-  const wx = lm[mcp].x - lm[0].x, wy = lm[mcp].y - lm[0].y;
-  const fx = lm[tip].x - lm[mcp].x, fy = lm[tip].y - lm[mcp].y;
-  const wLen = Math.hypot(wx, wy) || 0.001;
-  const fLen = Math.hypot(fx, fy) || 0.001;
-  return (wx * fx + wy * fy) / (wLen * fLen);
-}
-
-function isVictoryGesture(lm) {
-  const palm = Math.hypot(lm[0].x - lm[9].x, lm[0].y - lm[9].y) || 0.001;
-  const split = Math.hypot(lm[8].x - lm[12].x, lm[8].y - lm[12].y) / palm;
-
-  // 食指、中指伸直；无名指、小指收拢；两指之间有清楚的分叉。
-  return fingerExtension(lm, 8, 6) > 1.10 &&
-         fingerExtension(lm, 12, 10) > 1.10 &&
-         fingerStraight(lm, 8, 5) > 0.56 &&
-         fingerStraight(lm, 12, 9) > 0.56 &&
-         fingerExtension(lm, 16, 14) < 1.04 &&
-         fingerExtension(lm, 20, 18) < 1.04 &&
-         split > 0.18;
-}
-
-function updateVictoryGesture(active) {
-  const now = millis();
-  if (!active) {
-    victoryGestureActive = false;
-    victoryTriggered = false;
-    victoryHoldStart = 0;
-    return;
-  }
-
-  if (!victoryGestureActive) {
-    victoryGestureActive = true;
-    victoryHoldStart = now;
-    victoryTriggered = false;
-  }
-
-  if (!victoryTriggered && now - victoryHoldStart >= VICTORY_HOLD_MS && now >= victoryCooldownUntil) {
-    triggerMeteorShower();
-    victoryTriggered = true;
-    victoryCooldownUntil = now + VICTORY_COOLDOWN_MS;
-    victoryFeedbackUntil = now + SHOWER_GOLD_OPENING_SEC * 1000;
-  }
-}
-
-function triggerMeteorShower() {
-  const now = millis() / 1000;
-  if (!reduceMotion) showMeteorShowerLabel();
-  if (meteorShower) {
-    meteorShower.endAt = Math.max(meteorShower.endAt, now + SHOWER_DURATION_MIN * 0.6);
-    meteorShower.manual = true;
-    meteorShower.goldBoostUntil = now + SHOWER_GOLD_OPENING_SEC;
-  } else {
-    startMeteorShower(now, true);
-  }
-  meteorShowerNextAt = now + random(SHOWER_GAP_MIN, SHOWER_GAP_MAX);
-}
-
-function updateHandDoublePinch(lm) {
-  const pinchDist = Math.hypot(lm[4].x - lm[8].x, lm[4].y - lm[8].y);
-  const palm = Math.hypot(lm[0].x - lm[9].x, lm[0].y - lm[9].y) || 0.001;
-  const ratio = pinchDist / palm;
-
-  // 食指和拇指靠拢，同时至少一根其他手指未收成拳头，避免和五指缩放混淆。
-  let otherOpen = 0;
-  if (fingerExtension(lm, 12, 10) > 1.02) otherOpen++;
-  if (fingerExtension(lm, 16, 14) > 1.02) otherOpen++;
-  if (fingerExtension(lm, 20, 18) > 1.02) otherOpen++;
-  const pinchShape = ratio < HAND_PINCH_CLOSE_RATIO && otherOpen >= 1;
-  const released = ratio > HAND_PINCH_RELEASE_RATIO || otherOpen < 1;
-
-  if (pinchShape && !handPinchClosed) {
-    handPinchClosed = true;
-    const now = millis();
-    handPinchCycleUntil = now + HAND_PINCH_BLOCK_MS;
-    const gap = now - lastHandPinchAt;
-    if (lastHandPinchAt > 0 && gap >= HAND_PINCH_MIN_GAP_MS && gap <= HAND_PINCH_DOUBLE_MS) {
-      enterCityMode();
-      lastHandPinchAt = 0;
-    } else {
-      lastHandPinchAt = now;
-    }
-  } else if (released) {
-    handPinchClosed = false;
-  }
 }
 
 function onHandResults(results) {
@@ -3662,436 +3563,7 @@ function onHandResults(results) {
   handLastError = "";
   handStatusMessage = "";
   handLastSuccessAt = millis();
-  let list = (results && results.multiHandLandmarks) || [];
-  const handedness = (results && results.multiHandedness) || [];
-  const handLabel = handedness[0] && handedness[0].label ? handedness[0].label : "";
-  const nowMs = millis();
-
-  // 只保留一只手作为控制手；当前手持续离开后允许换另一只手。
-  if (!lockedHandLabel && handLabel) {
-    lockedHandLabel = handLabel;
-    handLockLastSeenAt = nowMs;
-  }
-  if (list.length && lockedHandLabel && handLabel && handLabel !== lockedHandLabel) {
-    if (handLockLastSeenAt && nowMs - handLockLastSeenAt > HAND_LOCK_RELEASE_MS) {
-      lockedHandLabel = handLabel;
-      handLockLastSeenAt = nowMs;
-    } else {
-      list = [];
-    }
-  } else if (list.length && handLabel === lockedHandLabel) {
-    handLockLastSeenAt = nowMs;
-  }
-  handCount = list.length;
-
-  if (handCount === 0) {
-    // 手离开画面：保留观察者模式和当前城市，手回来后再继续控制。
-    handSeen = false;
-    lastPalm = null;
-    handZoom = null;
-    handSmoothX = null;
-    handSmoothY = null;
-    handStillLocked = false;
-    handYSign = 0;
-    handYSignFrames = 0;
-    handFieldTargetStrength = 0;
-    lastFiveSpread = null;
-    fiveZoomImpulse = 0;
-    handPinchClosed = false;
-    lastHandPinchAt = 0;
-    handPinchCycleUntil = 0;
-    cityModeSwipeArmed = true;
-    cityModeStillFrames = 0;
-    cityModeReturnAnchor = null;
-    resetCityModeSwipeGesture();
-    victoryGestureActive = false;
-    victoryTriggered = false;
-    victoryHoldStart = 0;
-    return;
-  }
-
-  handSeen = true;
-  lastHandFrame = frameCount;
-  silence = 0;
-
-  // 单手比耶：连续保持一小段时间才触发流星雨，避免误触和重复触发。
-  const victory = handCount === 1 && isVictoryGesture(list[0]);
-  updateVictoryGesture(victory);
-  if (victory) {
-    lastPalm = null;
-    handSmoothX = null;
-    handSmoothY = null;
-    handStillLocked = false;
-    handYSign = 0;
-    handYSignFrames = 0;
-    handFieldTargetStrength = 0;
-    lastFiveSpread = null;
-    fiveZoomImpulse = 0;
-    handPinchClosed = false;
-    lastHandPinchAt = 0;
-    handPinchCycleUntil = 0;
-    handZoom = null;
-    return;
-  }
-
-  if (handCount === 1) updateHandDoublePinch(list[0]);
-
-  // —— 转动：先滤掉关键点的微小抖动，再保持原来的跟手比例 ——
-  const p = palmCenter(list[0]);
-  const mx = 1 - p.x, my = p.y;            // 镜像，方向才和画面对得上
-  handFieldTargetX = mx * width;
-  handFieldTargetY = my * height;
-  handFieldTargetStrength = 1;
-
-  if (handSmoothX == null) {
-    handSmoothX = mx;
-    handSmoothY = my;
-  } else {
-    const rawMove = Math.hypot(mx - handSmoothX, my - handSmoothY);
-    const smoothAmount = constrain(
-      map(rawMove, 0.0015, 0.018, HAND_FILTER_MIN, HAND_FILTER_MAX),
-      HAND_FILTER_MIN, HAND_FILTER_MAX
-    );
-    handSmoothX += (mx - handSmoothX) * smoothAmount;
-    handSmoothY += (my - handSmoothY) * smoothAmount;
-  }
-
-  let handMoveNow = 0;
-  if (lastPalm) {
-    let dx = handSmoothX - lastPalm.x;
-    let dy = handSmoothY - lastPalm.y;
-    const move = Math.hypot(dx, dy);
-    handMoveNow = move;
-    const stability = constrain((zoom - 1.30) / 0.90, 0, 1);
-    const stillZone = HAND_STILL_BASE + HAND_STILL_ZOOM * stability;
-    const wakeZone = stillZone * HAND_WAKE_MULT;
-
-    // 小抖动直接锁住；明确移动时立即恢复原有灵敏度。
-    if (handStillLocked) {
-      if (move < wakeZone) {
-        dx = 0; dy = 0;
-      } else {
-        handStillLocked = false;
-      }
-    } else if (move < stillZone) {
-      handStillLocked = true;
-      dx = 0; dy = 0;
-    }
-
-    // 横向和斜向转动时，过滤关键点上下方向的高频抖动。
-    const absX = Math.abs(dx), absY = Math.abs(dy);
-    if (absX > stillZone * 2 && absY > 0.00001) {
-      const ySign = Math.sign(dy);
-      if (ySign === handYSign) handYSignFrames++;
-      else { handYSign = ySign; handYSignFrames = 1; }
-
-      const yRatio = absY / Math.max(0.00001, absX);
-      if (yRatio < HAND_VERTICAL_NOISE) {
-        dy = 0;
-      } else if (yRatio < HAND_VERTICAL_RATIO && handYSignFrames < HAND_VERTICAL_CONFIRM) {
-        dy = 0;
-      }
-    } else {
-      handYSign = 0;
-      handYSignFrames = 0;
-    }
-
-    if (cityModeActive) {
-      const nowMs = millis();
-      const focusReady = !cityFocus || cityFocus.mode !== "focus" || cityFocus.t >= cityFocus.duration * CITY_MODE_FOCUS_READY;
-      let observerExited = false;
-
-      // 五指先聚拢，再在短时间窗口内轻晃两次即可退出。
-      if (nowMs < fivePinchArmedUntil && move > CITY_MODE_SHAKE_DISTANCE) {
-        const axis = Math.abs(dx) >= Math.abs(dy) ? 0 : 1;
-        const dir = axis === 0 ? Math.sign(dx) : Math.sign(dy);
-        if (axis !== fivePinchShakeAxis) {
-          fivePinchShakeAxis = axis;
-          fivePinchShakeDir = dir;
-          fivePinchShakeReversals = 0;
-        } else if (dir !== 0 && dir !== fivePinchShakeDir) {
-          fivePinchShakeDir = dir;
-          fivePinchShakeReversals++;
-        }
-        if (fivePinchShakeReversals >= CITY_MODE_SHAKE_REVERSALS) {
-          exitCityMode();
-          observerExited = true;
-          fivePinchExitFrames = 0;
-          fivePinchArmedUntil = 0;
-          fivePinchShakeAxis = -1;
-          fivePinchShakeDir = 0;
-          fivePinchShakeReversals = 0;
-        }
-      }
-
-      if (!cityModeSwipeArmed) {
-        resetCityModeSwipeGesture();
-        const returnDist = cityModeReturnAnchor
-          ? Math.hypot(handSmoothX - cityModeReturnAnchor.x, handSmoothY - cityModeReturnAnchor.y)
-          : 0;
-        const backAtOrigin = !cityModeReturnAnchor || returnDist < CITY_MODE_REARM_RETURN_DISTANCE;
-        if (move < CITY_MODE_REARM_DISTANCE) cityModeStillFrames++;
-        else cityModeStillFrames = 0;
-        if (cityModeStillFrames >= CITY_MODE_REARM_FRAMES &&
-            (backAtOrigin || cityModeStillFrames >= CITY_MODE_REARM_AWAY_FRAMES) &&
-            nowMs - cityModeLastSwitchAt > CITY_MODE_SWIPE_COOLDOWN && focusReady) {
-          cityModeSwipeArmed = true;
-          cityModeReturnAnchor = null;
-          cityModeStillFrames = 0;
-        }
-      } else if (!observerExited && move > 0.0005 &&
-                 nowMs - cityModeLastSwitchAt > CITY_MODE_SWIPE_COOLDOWN && focusReady) {
-        if (!cityModeGestureOrigin) {
-          cityModeGestureOrigin = { x: handSmoothX - dx, y: handSmoothY - dy };
-          cityModeGestureFrames = 0;
-        }
-        cityModeGestureFrames++;
-        const gestureX = handSmoothX - cityModeGestureOrigin.x;
-        const gestureY = handSmoothY - cityModeGestureOrigin.y;
-        const gestureMove = Math.hypot(gestureX, gestureY);
-        if (gestureMove > CITY_MODE_SWIPE_DISTANCE &&
-            cityModeGestureFrames >= CITY_MODE_SWIPE_MIN_FRAMES) {
-          // 用一段摆手的总位移判断方向，避免回手时被瞬时反向动作抢判。
-          const direction = Math.abs(gestureX) >= Math.abs(gestureY)
-            ? (gestureX >= 0 ? "left" : "right")
-            : (gestureY >= 0 ? "up" : "down");
-          navigateKeyCity(direction);
-          cityModeLastSwitchAt = nowMs;
-          cityModeSwipeArmed = false;
-          cityModeStillFrames = 0;
-          cityModeReturnAnchor = cityModeGestureOrigin;
-          resetCityModeSwipeGesture();
-          lastPalm = { x: handSmoothX, y: handSmoothY };
-          lastPalmFrame = frameCount;
-        }
-      }
-      dx = 0; dy = 0;
-      spinX = spinY = 0;
-    } else if ((Math.abs(dx) > stillZone * 1.5 || Math.abs(dy) > stillZone * 1.5) && cityFocus) {
-      cancelCityFocus();
-    }
-
-    rotY += dx * followX;
-    rotX += dy * HAND_FOLLOW_Y * HAND_TOUCH_Y;
-
-    // 换算成「每帧速度」，并保留一点动量记忆：
-    // 快速甩一下之后，就算手马上停住或离开画面，地球也会继续转
-    const dtSec2 = Math.max(0.01, (frameCount - lastPalmFrame) * (deltaTime / 1000));
-    const vx = (dx / dtSec2) * followX / 60;      // ÷60 → 单位是「每 1/60 秒转多少」
-    const vy = (dy / dtSec2) * HAND_FOLLOW_Y * HAND_TOUCH_Y / 60;
-    spinY = spinY * MOMENTUM + vx * (1 - MOMENTUM);
-    spinX = spinX * MOMENTUM + vy * (1 - MOMENTUM);
-
-    // 放大观察时，锁定状态会更快刹住残留惯性，但不影响移动时的跟手。
-    if (handStillLocked && stability > 0.05) {
-      const damp = Math.pow(0.80, dtSec2 * 60);
-      spinX *= damp;
-      spinY *= damp;
-      if (Math.abs(spinX) < 0.00008) spinX = 0;
-      if (Math.abs(spinY) < 0.00008) spinY = 0;
-    }
-  }
-  lastPalm = { x: handSmoothX, y: handSmoothY };
-  lastPalmFrame = frameCount;
-
-  // —— 缩放：单手五指聚合程度 ——
-  // 手指不动 → 不缩；五指收拢 → 缩小；五指张开 → 放大。
-  {
-    const l = list[0];
-    const tips = [4, 8, 12, 16, 20];
-    let tipCX = 0, tipCY = 0;
-    for (let i = 0; i < tips.length; i++) {
-      tipCX += l[tips[i]].x;
-      tipCY += l[tips[i]].y;
-    }
-    tipCX /= tips.length;
-    tipCY /= tips.length;
-
-    const palm = Math.hypot(l[0].x - l[9].x, l[0].y - l[9].y) || 0.001;
-    let tipSpread = 0;
-    for (let i = 0; i < tips.length; i++) {
-      tipSpread += Math.hypot(l[tips[i]].x - tipCX, l[tips[i]].y - tipCY);
-    }
-    const fiveSpread = (tipSpread / tips.length) / palm;
-
-    // 五指完全捏合：必须用三维坐标，避免横摆时指尖在屏幕上投影重叠造成误判。
-    const palm3 = handDist3(l[0], l[9]) || 0.001;
-    let tip3X = 0, tip3Y = 0, tip3Z = 0;
-    for (let i = 0; i < tips.length; i++) {
-      tip3X += l[tips[i]].x;
-      tip3Y += l[tips[i]].y;
-      tip3Z += (l[tips[i]].z || 0);
-    }
-    tip3X /= tips.length; tip3Y /= tips.length; tip3Z /= tips.length;
-
-    let maxTipGap3 = 0;
-    let maxTipGap2 = 0;
-    let tipSpread3 = 0;
-    for (let i = 0; i < tips.length; i++) {
-      tipSpread3 += Math.hypot(l[tips[i]].x - tip3X, l[tips[i]].y - tip3Y, (l[tips[i]].z || 0) - tip3Z);
-      for (let j = i + 1; j < tips.length; j++) {
-        const gap3 = handDist3(l[tips[i]], l[tips[j]]);
-        const gap2 = Math.hypot(l[tips[i]].x - l[tips[j]].x, l[tips[i]].y - l[tips[j]].y);
-        if (gap3 > maxTipGap3) maxTipGap3 = gap3;
-        if (gap2 > maxTipGap2) maxTipGap2 = gap2;
-      }
-    }
-    tipSpread3 /= tips.length;
-    const thumbIndex3 = handDist3(l[4], l[8]);
-    const thumbIndex2 = Math.hypot(l[4].x - l[8].x, l[4].y - l[8].y);
-    const fullFivePinch =
-      maxTipGap3 / palm3 < 0.50 &&
-      tipSpread3 / palm3 < 0.36 &&
-      thumbIndex3 / palm3 < 0.40 &&
-      maxTipGap2 / palm < 0.40 &&
-      thumbIndex2 / palm < 0.34;
-
-    if (cityModeActive) {
-      // 全捏合先进入可退出状态；随后轻晃两次即可退出，持续全捏合仍作为备用。
-      if (fullFivePinch) {
-        const nowMs = millis();
-        if (nowMs >= fivePinchArmedUntil) {
-          fivePinchArmedUntil = nowMs + CITY_MODE_SHAKE_WINDOW_MS;
-          fivePinchShakeAxis = -1;
-          fivePinchShakeDir = 0;
-          fivePinchShakeReversals = 0;
-        }
-        fivePinchExitFrames++;
-      } else {
-        fivePinchExitFrames = 0;
-      }
-      if (fivePinchExitFrames >= HAND_FIVE_PINCH_HOLD) {
-        exitCityMode();
-        fivePinchExitFrames = 0;
-        fivePinchArmedUntil = 0;
-        fivePinchShakeAxis = -1;
-        fivePinchShakeDir = 0;
-        fivePinchShakeReversals = 0;
-        lastFiveSpread = null;
-        fiveZoomImpulse = 0;
-      }
-    } else if (lastFiveSpread != null && handMoveNow < HAND_FIVE_MOVE_LIMIT && millis() >= handPinchCycleUntil) {
-      const delta = fiveSpread - lastFiveSpread;
-      if (Math.abs(delta) > HAND_FIVE_DEADZONE) {
-        if (cityFocus) cancelCityFocus();
-        const safeDelta = constrain(delta, -HAND_FIVE_MAX_DELTA, HAND_FIVE_MAX_DELTA);
-        fiveZoomImpulse = constrain(fiveZoomImpulse + safeDelta * HAND_FIVE_GAIN, -2.5, 2.5);
-      }
-    }
-    lastFiveSpread = fiveSpread;
-  }
-
-  handZoom = null;      // 不再用"绝对映射"，所以画面不会自己一路放大
-}
-
-/* ==========================================================
-   摄像头：算运动方向和运动范围
-   ========================================================== */
-function readGesture() {
-  const none = { vx: 0, vy: 0, n: 0, spread: spreadEMA };
-  if (!camOn || !cameraOk) {
-    motionVX = motionVY = 0;
-    lastCX = lastCY = null;
-    return none;
-  }
-
-  const aw = detect.width, ah = detect.height;
-  const vw = videoEl.videoWidth, vh = videoEl.videoHeight;
-  if (!vw || !vh) return none;
-
-  // 1) 把摄像头画面铺满检测画布（镜像）
-  const s = Math.max(aw / vw, ah / vh);
-  const dw = vw * s, dh = vh * s;
-  const dx = (aw - dw) / 2, dy = (ah - dh) / 2;
-
-  dctx.save();
-  dctx.globalAlpha = 1;
-  dctx.translate(aw, 0);
-  dctx.scale(-1, 1);
-  dctx.drawImage(videoEl, dx, dy, dw, dh);
-  dctx.restore();
-
-  const now = dctx.getImageData(0, 0, aw, ah).data;
-  if (!prevData) { prevData = now; return none; }
-
-  // 2) 变化掩码：这一帧比上一帧变化了多少
-  if (!maskBuf || maskBuf.length !== aw * ah) maskBuf = new Uint8Array(aw * ah);
-  maskBuf.fill(0);
-
-  for (let y = 1; y < ah - 1; y++) {
-    for (let x = 1; x < aw - 1; x++) {
-      const i = (y * aw + x) * 4;
-      const d =
-        Math.abs(now[i]     - prevData[i]) +
-        Math.abs(now[i + 1] - prevData[i + 1]) +
-        Math.abs(now[i + 2] - prevData[i + 2]);
-      if (d > MOTION_MIN) maskBuf[y * aw + x] = 1;
-    }
-  }
-  prevData = now;
-
-  // 3) 去噪 + 求运动中心
-  //    一个点周围 8 个邻居里至少 3 个也在动，才算真的「有东西在动」
-  //    这一步是解决「画面自己抽动」的关键
-  let sumX = 0, sumY = 0, n = 0;
-  let minX = aw, maxX = 0, minY = ah, maxY = 0;
-
-  for (let y = 1; y < ah - 1; y++) {
-    for (let x = 1; x < aw - 1; x++) {
-      if (!maskBuf[y * aw + x]) continue;
-
-      const nb =
-        maskBuf[(y - 1) * aw + (x - 1)] + maskBuf[(y - 1) * aw + x] + maskBuf[(y - 1) * aw + (x + 1)] +
-        maskBuf[y * aw + (x - 1)]                                   + maskBuf[y * aw + (x + 1)] +
-        maskBuf[(y + 1) * aw + (x - 1)] + maskBuf[(y + 1) * aw + x] + maskBuf[(y + 1) * aw + (x + 1)];
-
-      if (nb < 3) continue;          // 孤立噪点，丢掉
-
-      sumX += x; sumY += y; n++;
-      if (x < minX) minX = x;
-      if (x > maxX) maxX = x;
-      if (y < minY) minY = y;
-      if (y > maxY) maxY = y;
-    }
-  }
-  // 整幅画面都在变 → 是光线或曝光在动，不是手，忽略
-  if (n > aw * ah * 0.4) {
-    motionVX *= 0.5; motionVY *= 0.5;
-    lastCX = lastCY = null;
-    return none;
-  }
-
-  // 4) 运动中心的变化 → 速度
-  let tx = 0, ty = 0;
-  if (n >= MIN_MOTION) {
-    const cxNow = sumX / n, cyNow = sumY / n;
-    if (lastCX !== null) {
-      tx = (cxNow - lastCX) / aw;
-      ty = (cyNow - lastCY) / ah;
-    }
-    lastCX = cxNow; lastCY = cyNow;
-  } else {
-    // 手不在了：清空基准，下次重新出现时不会猛跳一下
-    lastCX = lastCY = null;
-  }
-
-  const vs = pow(VEL_SMOOTH, dtScale);
-  motionVX = motionVX * vs + tx * (1 - vs);
-  motionVY = motionVY * vs + ty * (1 - vs);
-
-  // 死区：细碎抖动直接归零
-  if (Math.abs(motionVX) < DEADZONE) motionVX = 0;
-  if (Math.abs(motionVY) < DEADZONE) motionVY = 0;
-
-  // 5) 运动范围（判断「张开 / 收拢」用）
-  if (n >= MIN_MOTION) {
-    const bw = (maxX - minX + 1) / aw;
-    const bh = (maxY - minY + 1) / ah;
-    const spread = Math.min(1, Math.max(bw, bh));
-    spreadEMA = spreadEMA * 0.92 + spread * 0.08;
-  }
-
-  return { vx: motionVX, vy: motionVY, n: n, spread: spreadEMA };
+  albumHandleHands(results || {});
 }
 
 function cameraReady() {
@@ -4107,7 +3579,8 @@ function cameraReady() {
 /* ==========================================================
    鼠标 / 键盘 / 窗口
    ========================================================== */
-function mousePressed() {
+function mousePressed(event) {
+  if (event && event.target && event.target.closest("#travel-panel, #travel-gallery")) return;
   dragging = true;
   dragVX = dragVY = 0;
   mouseDownX = mouseX;
@@ -4137,8 +3610,8 @@ function mouseDragged() {
   if (Math.hypot(mouseX - mouseDownX, mouseY - mouseDownY) > CITY_CLICK_MAX_MOVE) {
     mouseMoved = true;
   }
-  if (cityModeActive) {
-    if (mouseMoved) exitCityMode();
+  if (album.mode === "city") {
+    if (mouseMoved) albumGoGlobal();
   } else if (cityFocus) {
     cancelCityFocus();
   }
@@ -4154,13 +3627,17 @@ function mouseDragged() {
 }
 
 function mouseWheel(event) {
-  if (cityModeActive) return false;
-  if (cityFocus) cancelCityFocus();
-  zoomTarget = constrain(zoomTarget * (1 - event.delta * 0.0012), ZOOM_MIN, ZOOM_MAX);
+  albumWheel(event.delta);
   return false;      // 别让页面跟着滚
 }
 
 function keyPressed() {
+  if (album.mode === "album") {
+    if (keyCode === LEFT_ARROW) albumStep(-1);
+    else if (keyCode === RIGHT_ARROW) albumStep(1);
+    else if (key === "Escape") albumClose();
+    return false;
+  }
   if (tutorialOpen) {
     if (key === "Escape" || key === "Esc") closeTutorial();
     return;
@@ -4189,7 +3666,7 @@ function keyPressed() {
   if (key === "[") followX = Math.max(0.5, followX - 0.2);
   if (key === "]") followX = Math.min(6.0, followX + 0.2);
   if (key === "r" || key === "R") {
-    cancelCityFocus();
+    albumGoGlobal();
     rotX = -0.35; rotY = -1.8; spinX = spinY = 0; zoom = zoomTarget = 1;
   }
   if (key === "s" || key === "S") {

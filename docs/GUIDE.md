@@ -1,3 +1,5 @@
+> 本文是原版 `main` 的手势指南。旅行相册版请看 [README](../README.md) 和 [旅行版操作说明](TRAVEL_ALBUM.md)。
+
 # 操作与参数指南
 
 [返回项目首页](../README.md)
