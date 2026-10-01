@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>深空制图仪 · Cartograph</title>
-  <link rel="stylesheet" href="css/style.css">
+  <link rel="stylesheet" href="css/style.css?v=photo-glass-3">
   <script src="js/p5.min.js"></script>
   <!-- 手部识别库（MediaPipe Hands，本地文件，完全离线） -->
   <script src="assets/mediapipe/hands.js"></script>
@@ -46,9 +46,25 @@
   </aside>
 
   <section id="travel-gallery" role="dialog" aria-label="城市照片" hidden>
-    <div class="travel-gallery-bar"><span id="travel-caption"></span><label>归属城市 <select id="travel-reassign"></select></label><button id="travel-close" type="button">返回城市</button></div>
-    <div class="travel-gallery-photo"><button id="travel-prev" type="button" aria-label="上一张">‹</button><img id="travel-photo" alt=""><button id="travel-next" type="button" aria-label="下一张">›</button></div>
-    <p>张掌左右摆动翻页 · 握拳保持返回城市 · 也可用方向键和 Esc</p>
+    <div class="travel-gallery-surface">
+      <header class="travel-gallery-bar">
+        <div class="travel-gallery-heading">
+          <span class="travel-gallery-eyebrow">旅途档案 / TRAVEL ARCHIVE</span>
+          <h2 id="travel-gallery-city"></h2>
+          <p id="travel-caption"></p>
+        </div>
+        <div class="travel-gallery-tools">
+          <label class="travel-gallery-location">归属城市 <select id="travel-reassign"></select></label>
+          <button id="travel-close" type="button"><span aria-hidden="true">×</span> 返回城市</button>
+        </div>
+      </header>
+      <div class="travel-gallery-stage">
+        <button id="travel-prev" type="button" aria-label="上一张">‹</button>
+        <div class="travel-gallery-photo"><img id="travel-photo" alt=""></div>
+        <button id="travel-next" type="button" aria-label="下一张">›</button>
+      </div>
+      <p class="travel-gallery-help">张掌左右摆动翻页 <span aria-hidden="true">·</span> 握拳保持返回城市 <span aria-hidden="true">·</span> 方向键 / Esc</p>
+    </div>
   </section>
 
   <button id="tutorial-button" type="button" aria-expanded="false">
@@ -97,7 +113,7 @@
   <div id="vignette"></div>
   <div id="grain"></div>
 
-  <script src="album.js?v=2"></script>
+  <script src="album.js?v=3"></script>
   <script src="sketch.js?v=gesture-modes-2"></script>
 </body>
 </html>

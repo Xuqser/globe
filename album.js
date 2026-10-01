@@ -178,9 +178,25 @@ function albumRenderGallery() {
   if (!items.length) { albumClose(); return; }
   album.index = Math.max(0, Math.min(album.index, items.length - 1));
   const item = items[album.index];
-  document.getElementById("travel-photo").src = item.preview;
-  document.getElementById("travel-photo").alt = item.name;
-  document.getElementById("travel-caption").textContent = `${album.city} · ${album.index + 1}/${items.length} · ${item.takenAt || "时间未知"}`;
+  const photo = document.getElementById("travel-photo");
+  const frame = photo.parentElement;
+  frame.classList.remove("is-ready");
+  const reveal = () => {
+    photo.onload = null;
+    void frame.offsetWidth;
+    frame.classList.add("is-ready");
+  };
+  photo.onload = reveal;
+  photo.src = item.preview;
+  photo.alt = item.name;
+  if (photo.complete && photo.naturalWidth) reveal();
+  document.getElementById("travel-gallery-city").textContent = album.city;
+  const takenAt = item.takenAt
+    ? item.takenAt.replace(/^(\d{4}):(\d{2}):(\d{2}) (\d{2}:\d{2}).*$/, "$1.$2.$3 · $4")
+    : "时间未知";
+  document.getElementById("travel-caption").textContent = `第 ${album.index + 1} / ${items.length} 张 · ${takenAt}`;
+  document.getElementById("travel-prev").disabled = album.index === 0;
+  document.getElementById("travel-next").disabled = album.index === items.length - 1;
   const select = document.getElementById("travel-reassign");
   select.replaceChildren();
   for (const name of Object.keys(CITIES).filter(name => !name.startsWith("坐标 ")).sort()) {

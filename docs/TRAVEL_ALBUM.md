@@ -1,6 +1,6 @@
-# 旅行地球仪 v2：手势版说明
+# 旅行地球仪 v3：照片界面说明
 
-这是从 `photo-album-v1` 分出的手势改版。原始地球、城市灯光、航线和照片导入继续使用；全球浏览与城市观察由双手动作切换，照片相册是城市内的独立页面。
+这是从 `gesture-modes-v2` 分出的照片界面版。原始地球、城市灯光、航线、照片导入和手势操作继续使用；照片在城市相册内由小到大展开，深蓝半透明玻璃框沿用地图的象牙白文字和黄铜色提示。照片加载完成后才开始展开动画，系统开启减少动态效果时不播放动画。
 
 | 状态 | 一只手 | 两只手 | 鼠标／键盘 |
 | --- | --- | --- | --- |
@@ -26,8 +26,8 @@ python3 -m http.server 8000 --bind 127.0.0.1
 
 ```sh
 cd /Users/johnsonxu/globe
-git switch gesture-modes-v2
+git switch photo-glass-v3
 python3 server.py
 ```
 
-上一版相册：`git switch photo-album-v1` 后运行 `python3 server.py`。`local_photos/` 被忽略，切换分支不会清除已导入的照片。回退到 `main` 时原版不会显示相册；再次切回当前版即可恢复。
+上一版手势和照片界面：`git switch gesture-modes-v2` 后运行 `python3 server.py`。初版相册在 `photo-album-v1`。`local_photos/` 被忽略，切换分支不会清除已导入的照片。回退到 `main` 时原版不会显示相册；再次切回当前版即可恢复。
