@@ -263,11 +263,12 @@ function albumSwipe(x, now, callback) {
 }
 function albumGlobeSwipe(x, y, now) {
   if (!album.globeSwipe) {
-    album.globeSwipe = { x, y, lastX: x, lastY: y, armed: true, still: 0, triggeredAt: 0 };
+    album.globeSwipe = { x, y, lastX: x, lastY: y, movementAt: null, armed: true, still: 0, triggeredAt: 0 };
     return;
   }
   const gesture = album.globeSwipe;
   const dx = x - gesture.x, dy = y - gesture.y;
+  if (gesture.movementAt == null && Math.hypot(dx, dy) > 0.015) gesture.movementAt = now;
   const still = Math.hypot(x - gesture.lastX, y - gesture.lastY) < 0.004;
   gesture.lastX = x;
   gesture.lastY = y;
@@ -277,14 +278,19 @@ function albumGlobeSwipe(x, y, now) {
       gesture.armed = true;
       gesture.x = x;
       gesture.y = y;
+      gesture.movementAt = null;
       gesture.still = 0;
     }
     return;
   }
+  // 摆手越快初速度越大；回手阶段不再读取位移，交给阻尼自然停下。
+  const speed = move => Math.min(0.08, Math.max(0.03, Math.abs(move) * 130 / Math.max(80, now - gesture.movementAt)));
   if (Math.abs(dx) > 0.075 && Math.abs(dx) > Math.abs(dy) * 1.2) {
-    album.turnY += Math.sign(dx) * 0.62;
+    album.turnY = Math.sign(dx) * speed(dx);
+    album.turnX = 0;
   } else if (Math.abs(dy) > 0.075 && Math.abs(dy) > Math.abs(dx) * 1.2) {
-    album.turnX += Math.sign(dy) * HAND_TOUCH_Y * 0.38;
+    album.turnX = Math.sign(dy) * HAND_TOUCH_Y * speed(dy) * 0.6;
+    album.turnY = 0;
   } else return;
   gesture.armed = false;
   gesture.triggeredAt = now;
@@ -294,12 +300,12 @@ function albumGlobeSwipe(x, y, now) {
 
 function albumUpdateGlobeTurn(scale) {
   if (album.mode !== "globe") return;
-  const amount = 1 - Math.pow(0.82, scale);
-  const dx = album.turnX * amount, dy = album.turnY * amount;
-  rotX += dx;
-  rotY += dy;
-  album.turnX = Math.abs(album.turnX - dx) < 0.0005 ? 0 : album.turnX - dx;
-  album.turnY = Math.abs(album.turnY - dy) < 0.0005 ? 0 : album.turnY - dy;
+  const decay = Math.pow(0.90, Math.min(scale, 2.5));
+  const travel = (1 - decay) / 0.10;
+  rotX += album.turnX * travel;
+  rotY += album.turnY * travel;
+  album.turnX = Math.abs(album.turnX * decay) < 0.0005 ? 0 : album.turnX * decay;
+  album.turnY = Math.abs(album.turnY * decay) < 0.0005 ? 0 : album.turnY * decay;
   if (frameCount % 12 === 0) albumUpdateTargetHint();
 }
 
