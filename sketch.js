@@ -352,7 +352,7 @@ let spinX = 0, spinY = 0;      // 转速（松手后的惯性）
 let silence = 0;               // 多久没检测到动作
 let dragVX = 0, dragVY = 0;    // 鼠标拖拽的瞬时速度
 let zoom = 1, zoomTarget = 1;
-let autoSpin = true;
+let autoSpin = false;
 let dragging = false;
 let mouseDownX = 0, mouseDownY = 0, mouseDownAt = 0, mouseMoved = false;
 let cityFocus = null, cityFocusReturn = null;
@@ -1864,6 +1864,7 @@ function draw() {
     }
   }
 
+  albumUpdateGlobeTurn(dtScale);
   const focusing = updateCityFocus(dtSec);
   updateObserverLabelBoosts(dtSec);
   if (album.mode === "globe" && autoSpin && !focusing && !dragging && !usingHandsNow && silence > 150 && spinY === 0) rotY += AUTO_SPIN * dtScale;
@@ -3582,6 +3583,7 @@ function cameraReady() {
 function mousePressed(event) {
   if (event && event.target && event.target.closest("#travel-panel, #travel-gallery")) return;
   dragging = true;
+  album.turnX = album.turnY = 0;
   dragVX = dragVY = 0;
   mouseDownX = mouseX;
   mouseDownY = mouseY;

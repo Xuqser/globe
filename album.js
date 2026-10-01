@@ -1,12 +1,11 @@
 /* Local travel album and mutually exclusive gesture states. */
 const album = {
   photos: [], groups: new Map(), mode: "globe", city: null, index: 0,
-  twoHand: null, enterAt: 0, exitAt: 0, pose: "", poseAt: 0,
+  twoHand: null, twoHandUsed: false, twoHandMissing: 0,
+  globeSwipe: null, turnX: 0, turnY: 0, pose: "", poseAt: 0,
   fistReady: false, swipeOrigin: null, swipeLastX: null, swipeArmed: true, stillFrames: 0,
   gestureLockUntil: 0, lastGestureAt: 0
 };
-const ENTER_ZOOM = 1.75;
-const EXIT_ZOOM = 1.30;
 
 function albumHaversine(a, b) {
   const r = Math.PI / 180;
@@ -57,7 +56,7 @@ function albumClosestCity() {
     const distance = albumHaversine(view, CITIES[candidate]);
     if (distance < best) { name = candidate; best = distance; }
   }
-  return best < 1800 ? name : null;
+  return name;
 }
 
 function albumRenderCities() {
@@ -103,16 +102,23 @@ function albumRenderCities() {
   albumUpdateMode();
 }
 
+function albumUpdateTargetHint() {
+  if (album.mode !== "globe") return;
+  const city = albumClosestCity();
+  document.getElementById("travel-hint").textContent = city
+    ? `单手摆动旋转 · 双手拉开进入：${city}`
+    : "先添加照片，再用双手拉开进入城市";
+}
+
 function albumUpdateMode() {
   const label = album.mode === "globe" ? "全球浏览" : album.mode === "city" ? `城市观察：${album.city}` : `照片相册：${album.city}`;
   document.getElementById("travel-mode").textContent = label;
   document.getElementById("travel-open").hidden = album.mode !== "city";
   document.getElementById("travel-global").hidden = album.mode === "globe";
-  document.getElementById("travel-hint").textContent = album.mode === "globe"
-    ? "单手移动旋转；双手拉开放大进入有照片的城市"
-    : album.mode === "city"
-      ? "握拳左右摆动切城市；停稳后张掌打开照片；双手靠近返回全球"
-      : "张掌左右摆动翻照片；握拳保持返回城市";
+  if (album.mode === "globe") albumUpdateTargetHint();
+  else document.getElementById("travel-hint").textContent = album.mode === "city"
+    ? "握拳左右摆动切城市；停稳后张掌打开照片；双手靠近返回全球"
+    : "张掌左右摆动翻照片；握拳保持返回城市";
 }
 
 function albumEnterCity(name) {
@@ -120,6 +126,8 @@ function albumEnterCity(name) {
   album.mode = "city";
   album.city = name;
   album.twoHand = null;
+  album.turnX = album.turnY = 0;
+  album.globeSwipe = null;
   albumResetGesture();
   album.gestureLockUntil = millis() + 650;
   album.swipeArmed = false;
@@ -132,6 +140,8 @@ function albumGoGlobal() {
   album.mode = "globe";
   album.city = null;
   album.twoHand = null;
+  album.globeSwipe = null;
+  album.turnX = album.turnY = 0;
   zoomTarget = Math.min(zoomTarget, 1.25);
   albumResetGesture();
   album.gestureLockUntil = millis() + 650;
@@ -235,26 +245,79 @@ function albumSwipe(x, now, callback) {
     album.stillFrames = 0;
   }
 }
-function albumTwoHands(list, now) {
-  if (album.mode === "city" && cityFocus && cityFocus.t < cityFocus.duration) return;
-  const a = palmCenter(list[0]), b = palmCenter(list[1]);
-  const distance = Math.hypot(a.x - b.x, a.y - b.y);
-  if (!album.twoHand) {
-    album.twoHand = { distance, zoom: zoomTarget, since: now };
+function albumGlobeSwipe(x, y, now) {
+  if (!album.globeSwipe) {
+    album.globeSwipe = { x, y, lastX: x, lastY: y, armed: true, still: 0, triggeredAt: 0 };
     return;
   }
-  if (now - album.twoHand.since < 150 || album.twoHand.distance < 0.08) return;
-  const ratio = Math.max(0.5, Math.min(2, distance / album.twoHand.distance));
-  zoomTarget = constrain(album.twoHand.zoom * ratio, ZOOM_MIN, ZOOM_MAX);
-  if (cityFocus && album.mode === "city" && Math.abs(ratio - 1) > 0.04) cityFocus = null;
-  if (album.mode === "globe") {
-    const candidate = albumClosestCity();
-    album.enterAt = zoomTarget >= ENTER_ZOOM && candidate ? (album.enterAt || now) : 0;
-    if (album.enterAt && now - album.enterAt > 300) albumEnterCity(candidate);
-  } else if (album.mode === "city") {
-    album.exitAt = zoomTarget <= EXIT_ZOOM ? (album.exitAt || now) : 0;
-    if (album.exitAt && now - album.exitAt > 300) albumGoGlobal();
+  const gesture = album.globeSwipe;
+  const dx = x - gesture.x, dy = y - gesture.y;
+  const still = Math.hypot(x - gesture.lastX, y - gesture.lastY) < 0.004;
+  gesture.lastX = x;
+  gesture.lastY = y;
+  if (!gesture.armed) {
+    gesture.still = Math.hypot(dx, dy) < 0.025 && still ? gesture.still + 1 : 0;
+    if (gesture.still >= 5 && now - gesture.triggeredAt > 400) {
+      gesture.armed = true;
+      gesture.x = x;
+      gesture.y = y;
+      gesture.still = 0;
+    }
+    return;
   }
+  if (Math.abs(dx) > 0.075 && Math.abs(dx) > Math.abs(dy) * 1.2) {
+    album.turnY += Math.sign(dx) * 0.62;
+  } else if (Math.abs(dy) > 0.075 && Math.abs(dy) > Math.abs(dx) * 1.2) {
+    album.turnX += Math.sign(dy) * HAND_TOUCH_Y * 0.38;
+  } else return;
+  gesture.armed = false;
+  gesture.triggeredAt = now;
+  gesture.still = 0;
+  spinX = spinY = 0;
+}
+
+function albumUpdateGlobeTurn(scale) {
+  if (album.mode !== "globe") return;
+  const amount = 1 - Math.pow(0.82, scale);
+  const dx = album.turnX * amount, dy = album.turnY * amount;
+  rotX += dx;
+  rotY += dy;
+  album.turnX = Math.abs(album.turnX - dx) < 0.0005 ? 0 : album.turnX - dx;
+  album.turnY = Math.abs(album.turnY - dy) < 0.0005 ? 0 : album.turnY - dy;
+  if (frameCount % 12 === 0) albumUpdateTargetHint();
+}
+
+function albumTwoHands(list, now) {
+  const a = palmCenter(list[0]), b = palmCenter(list[1]);
+  const distance = Math.hypot(a.x - b.x, a.y - b.y);
+  if (!album.twoHand) album.twoHand = { samples: [], base: null, changeAt: 0, target: albumClosestCity() };
+  const gesture = album.twoHand;
+  if (gesture.base == null) {
+    gesture.samples.push(distance);
+    if (gesture.samples.length < 5) return;
+    const sorted = gesture.samples.slice().sort((x, y) => x - y);
+    gesture.base = sorted[2];
+    return;
+  }
+  // 两只手只切换模式；初次检测到两手时的距离就是本轮动作的基准。
+  const change = distance - gesture.base;
+  const threshold = Math.max(0.055, gesture.base * 0.22);
+  const active = album.mode === "globe"
+    ? change > threshold && gesture.target
+    : change < -threshold;
+  if (!active) {
+    gesture.changeAt = 0;
+    if (album.mode === "globe") gesture.base = Math.min(gesture.base, distance);
+    else gesture.base = Math.max(gesture.base, distance);
+    return;
+  }
+  if (!gesture.changeAt) gesture.changeAt = now;
+  if (now - gesture.changeAt < 250) return;
+  const target = gesture.target;
+  if (album.mode === "globe") albumEnterCity(target);
+  else if (album.mode === "city") albumGoGlobal();
+  album.twoHandUsed = true;
+  album.twoHand = null;
 }
 
 function albumHandleHands(results) {
@@ -262,21 +325,35 @@ function albumHandleHands(results) {
   const now = millis();
   handCount = list.length;
   handSeen = list.length > 0;
-  if (!list.length) {
-    album.twoHand = null; albumResetGesture();
-    lastPalm = null; spinX = spinY = 0;
-    return;
-  }
-  lastHandFrame = frameCount;
-  if (album.mode === "album") spinX = spinY = 0;
+  lastHandFrame = list.length ? frameCount : lastHandFrame;
   if (list.length >= 2) {
+    album.twoHandMissing = 0;
     lastPalm = null;
+    album.globeSwipe = null;
     albumResetGesture();
-    if (album.mode !== "album") albumTwoHands(list, now);
+    spinX = spinY = 0;
+    if (album.mode !== "album" && !album.twoHandUsed && now >= album.gestureLockUntil) albumTwoHands(list, now);
     return;
   }
-  album.twoHand = null;
-  album.enterAt = album.exitAt = 0;
+  if (album.twoHand || album.twoHandUsed) {
+    album.twoHandMissing++;
+    lastPalm = null;
+    spinX = spinY = 0;
+    if (album.twoHand) album.twoHand.changeAt = 0;
+    if (album.twoHandMissing < 6) return; // 暂时丢失一只手，不立刻改作单手操作。
+    album.twoHand = null;
+    album.twoHandUsed = false;
+    album.twoHandMissing = 0;
+    albumResetGesture();
+    album.globeSwipe = null;
+  }
+  if (!list.length) {
+    album.globeSwipe = null;
+    albumResetGesture();
+    lastPalm = null;
+    spinX = spinY = 0;
+    return;
+  }
   const p = palmCenter(list[0]);
   const x = 1 - p.x;
   const pose = albumPose(list[0]);
@@ -286,11 +363,7 @@ function albumHandleHands(results) {
   }
   if (now < album.gestureLockUntil || tutorialOpen) { lastPalm = p; return; }
   if (album.mode === "globe") {
-    if (lastPalm) {
-      const dx = (lastPalm.x - p.x) * followX;
-      const dy = (p.y - lastPalm.y) * HAND_FOLLOW_Y * HAND_TOUCH_Y;
-      if (Math.hypot(dx, dy) > 0.002) { rotY += dx; rotX += dy; spinX = spinY = 0; }
-    }
+    albumGlobeSwipe(x, p.y, now);
   } else if (album.mode === "city") {
     spinX = spinY = 0;
     if (pose === "fist" && now - album.poseAt > 220) {
@@ -309,10 +382,6 @@ function albumHandleHands(results) {
 function albumWheel(delta) {
   if (album.mode === "album") return;
   zoomTarget = constrain(zoomTarget * (1 - delta * 0.0012), ZOOM_MIN, ZOOM_MAX);
-  if (album.mode === "globe" && zoomTarget >= ENTER_ZOOM) {
-    const city = albumClosestCity();
-    if (city) albumEnterCity(city);
-  } else if (album.mode === "city" && zoomTarget <= EXIT_ZOOM) albumGoGlobal();
 }
 
 async function albumInit() {
