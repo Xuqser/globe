@@ -62,8 +62,8 @@ const STATION_PASS_GLOBAL_MS   = 8000;
 const METEOR_SHOWER_LABEL_MS   = 2000;
 const HAND_PINCH_CLOSE_RATIO   = 0.45;
 const HAND_PINCH_RELEASE_RATIO = 0.58;
-const HAND_PINCH_DOUBLE_MS     = 1600;
-const HAND_PINCH_MIN_GAP_MS    = 120;
+const HAND_PINCH_DOUBLE_MS     = 1200;
+const HAND_PINCH_MIN_GAP_MS    = 180;
 const HAND_PINCH_BLOCK_MS      = 520;
 const CITY_MODE_SWIPE_DISTANCE = 0.020; // 摆手累计位移达到这里就切城：越小越灵敏
 const CITY_MODE_SWIPE_MIN_FRAMES = 2;   // 至少连续移动两帧，过滤单帧抖动
@@ -3362,7 +3362,7 @@ function ctx2d() {
    手部识别（MediaPipe Hands）
    ----------------------------------------------------------
    文件都在 assets/mediapipe/ 里，不联网也能跑。
-   给出 21 个手部关键点 → 手掌位置（转）+ 拇指食指距离（缩放）
+   给出 21 个手部关键点 → 手掌位置（转）+ 拇指食指距离（切换模式）
    ========================================================== */
 function handsErrorText(err) {
   const text = err && err.message ? String(err.message) : String(err || "未知错误");
