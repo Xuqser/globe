@@ -2,12 +2,12 @@
 
 把保存在电脑上的旅行照片放到地球仪上浏览。照片中的 GPS 用来归类旅行地点；可以转动地球、切换城市，再打开该城市的照片。照片和位置数据保存在本机，不提交到 GitHub。
 
-本分支 `pinch-toggle-v5` 在原版「深空制图仪」上加入了本地照片相册和三种操作状态：全球浏览、城市观察、照片相册。地球由 p5.js 绘制，浏览器内的 MediaPipe Hands 识别手部关键点；没有摄像头时也可以用鼠标和页面按钮操作。
+本分支 `pinch-toggle-v5` 在 [原版「深空制图仪」](https://github.com/Wencle-Sun/globe) 上加入了本地照片相册和三种操作状态：全球浏览、城市观察、照片相册。地球由 p5.js 绘制，浏览器内的 MediaPipe Hands 识别手部关键点；没有摄像头时也可以用鼠标和页面按钮操作。
 
 ## 在 macOS 上运行
 
 ```sh
-git clone -b pinch-toggle-v5 https://github.com/Wencle-Sun/globe.git
+git clone -b pinch-toggle-v5 https://github.com/Xuqser/globe.git
 cd globe
 python3 server.py
 ```
