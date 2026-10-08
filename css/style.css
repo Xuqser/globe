@@ -673,6 +673,13 @@ body.ui-hidden #landscape-button, body.ui-hidden #landscape-help { display: none
 #travel-cities { display: flex; gap: 5px; flex-wrap: wrap; max-height: 110px; overflow: auto; }
 #travel-pending label { display: block; margin-top: 7px; font-size: 12px; overflow-wrap: anywhere; }
 #travel-pending select { max-width: 140px; }
+#gesture-debug { position: fixed; z-index: 16; right: 24px; bottom: 24px; width: min(320px, calc(100vw - 48px)); max-height: 55vh; overflow: auto; box-sizing: border-box; padding: 12px; color: #e9e5da; background: rgba(8, 16, 29, .94); border: 1px solid rgba(227,160,76,.6); border-radius: 12px; font: 12px/1.45 system-ui, sans-serif; }
+#gesture-debug[hidden] { display: none; }
+#gesture-debug pre { margin: 8px 0; white-space: pre-wrap; font: inherit; }
+#gesture-debug button { padding: 5px 8px; color: #f3eee3; background: #17304a; border: 1px solid #64788c; border-radius: 6px; cursor: pointer; }
+#gesture-debug textarea { display: block; width: 100%; box-sizing: border-box; margin: 8px 0; padding: 6px; resize: vertical; color: #e9e5da; background: #0b1828; border: 1px solid #64788c; font: 11px/1.4 ui-monospace, monospace; }
+#gesture-debug small { color: #bfcbd7; }
+body.gesture-debugging #travel-panel { max-height: 40vh; }
 #travel-gallery {
   position: fixed;
   z-index: 15;
@@ -806,9 +813,11 @@ body.ui-hidden #landscape-button, body.ui-hidden #landscape-help { display: none
 .travel-gallery-help span { margin: 0 7px; color: var(--brass); }
 @keyframes gallerySurfaceIn { from { opacity: 0; transform: scale(.94) translateY(16px); } to { opacity: 1; transform: scale(1) translateY(0); } }
 @keyframes galleryPhotoIn { from { opacity: 0; transform: scale(.46) translateY(14px); } to { opacity: 1; transform: scale(1) translateY(0); } }
-body.ui-hidden #travel-panel { display: none; }
+body.ui-hidden #travel-panel, body.ui-hidden #gesture-debug { display: none; }
 @media (max-width: 700px) {
   #travel-panel { top: auto; bottom: 16px; right: 16px; max-height: 42vh; }
+  body.gesture-debugging #travel-panel { max-height: 42vh; }
+  #gesture-debug { right: 16px; bottom: calc(42vh + 24px); max-height: 40vh; }
   #travel-gallery { padding: max(8px, env(safe-area-inset-top)) 8px max(8px, env(safe-area-inset-bottom)); }
   .travel-gallery-surface { height: 100%; border-radius: 22px; }
   .travel-gallery-bar { flex-wrap: wrap; gap: 14px; padding: 20px 18px 8px; }

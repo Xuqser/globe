@@ -7,6 +7,91 @@ const album = {
   gestureLockUntil: 0, lastGestureAt: 0
 };
 
+const albumDebug = {
+  enabled: typeof window !== "undefined" && new URLSearchParams(window.location.search).get("debug") === "1",
+  handCount: null, pose: "—", ratio: null, otherOpen: null, lastRender: -Infinity, events: []
+};
+
+function albumDebugStatus(now) {
+  if (albumDebug.handCount == null) return "尚未收到手部识别结果";
+  if (!albumDebug.handCount) return "未识别到手；离开画面不算松开";
+  if (albumDebug.handCount > 1) return "两只手入镜，暂不处理手势";
+  if (album.multiHandCooldown) return `双手切回单手，等待 ${album.multiHandCooldown} 帧`;
+  if (tutorialOpen) return "教程打开，手势暂停";
+  if (now < album.gestureLockUntil) return `切换保护中，还剩 ${Math.ceil(album.gestureLockUntil - now)} ms`;
+  if (album.mode === "album") return "照片模式不处理捏合";
+  if (album.mode === "globe" && !albumNames().length) return "没有可进入的照片城市";
+  if (album.pinchClosed) return `已捏合，等待松开（${album.pinchReleaseFrames}/2 帧）`;
+  if (album.pinchAt && now - album.pinchAt <= HAND_PINCH_DOUBLE_MS) return `等待第二次捏合，还剩 ${Math.ceil(HAND_PINCH_DOUBLE_MS - (now - album.pinchAt))} ms`;
+  if (albumDebug.ratio != null && albumDebug.ratio < HAND_PINCH_CLOSE_RATIO && !albumDebug.otherOpen) return "指尖已接近，但其他三指未伸开";
+  return "等待捏合";
+}
+
+function albumDebugRender(force = false) {
+  if (!albumDebug.enabled) return;
+  const now = millis();
+  if (!force && now - albumDebug.lastRender < 100) return;
+  albumDebug.lastRender = now;
+  const readout = document.getElementById("gesture-debug-readout");
+  if (!readout) return;
+  readout.textContent = [
+    `模式：${album.mode} · 有照片地点：${albumNames().length}`,
+    `手数：${albumDebug.handCount == null ? "—" : albumDebug.handCount} · 手型：${albumDebug.pose}`,
+    `拇指/食指距离÷掌长：${albumDebug.ratio == null ? "—" : albumDebug.ratio.toFixed(2)}（合 < 0.45，开 > 0.58）`,
+    `其他三指有伸开：${albumDebug.otherOpen == null ? "—" : albumDebug.otherOpen ? "是" : "否"}`,
+    `首次捏合：${album.pinchAt ? `${Math.round(now - album.pinchAt)} ms 前` : "未记录"}`,
+    `状态：${albumDebugStatus(now)}`
+  ].join("\n");
+}
+
+function albumDebugEvent(message) {
+  if (!albumDebug.enabled) return;
+  albumDebug.events.push(`${(millis() / 1000).toFixed(1)}s  ${message}`);
+  if (albumDebug.events.length > 60) albumDebug.events.shift();
+  const log = document.getElementById("gesture-debug-log");
+  if (log) log.value = albumDebug.events.join("\n");
+  albumDebugRender(true);
+}
+
+function albumDebugObserve(list) {
+  if (!albumDebug.enabled) return;
+  const previous = albumDebug.handCount;
+  albumDebug.handCount = list.length;
+  const lm = list[0];
+  albumDebug.pose = lm ? albumPose(lm) : "—";
+  albumDebug.ratio = null;
+  albumDebug.otherOpen = null;
+  if (lm && lm[0] && lm[4] && lm[8] && lm[9]) {
+    const palm = Math.hypot(lm[0].x - lm[9].x, lm[0].y - lm[9].y) || 0.001;
+    albumDebug.ratio = Math.hypot(lm[4].x - lm[8].x, lm[4].y - lm[8].y) / palm;
+    albumDebug.otherOpen = fingerExtension(lm, 12, 10) > 1.02 ||
+      fingerExtension(lm, 16, 14) > 1.02 || fingerExtension(lm, 20, 18) > 1.02;
+  }
+  if (previous !== list.length) albumDebugEvent(`识别到 ${list.length} 只手`);
+  albumDebugRender();
+}
+
+function albumDebugInit() {
+  if (!albumDebug.enabled) return;
+  document.body.classList.add("gesture-debugging");
+  document.getElementById("gesture-debug").hidden = false;
+  document.getElementById("gesture-debug-copy").onclick = async () => {
+    const text = document.getElementById("gesture-debug-readout").textContent +
+      "\n\n事件：\n" + document.getElementById("gesture-debug-log").value;
+    const status = document.getElementById("gesture-debug-copy-status");
+    try {
+      await navigator.clipboard.writeText(text);
+      status.textContent = "已复制";
+    } catch (_) {
+      const log = document.getElementById("gesture-debug-log");
+      log.value = text;
+      log.select();
+      status.textContent = "请按 ⌘C 复制选中内容";
+    }
+  };
+  albumDebugRender(true);
+}
+
 function albumHaversine(a, b) {
   const r = Math.PI / 180;
   const dLat = (b.lat - a.lat) * r, dLon = (b.lon - a.lon) * r;
@@ -337,28 +422,37 @@ function albumHandlePinch(lm, now) {
     const gap = now - album.pinchAt;
     if (album.pinchAt && gap >= HAND_PINCH_MIN_GAP_MS && gap <= HAND_PINCH_DOUBLE_MS) {
       const target = album.pinchTarget;
+      albumDebugEvent(`第 2 次捏合（间隔 ${Math.round(gap)} ms）：${album.mode === "globe" ? "进入城市" : "返回全球"}`);
       if (album.mode === "globe") albumEnterCity(target);
       else albumGoGlobal();
       album.pinchClosed = true; // 切换后的这次捏合必须先松开，不能再算下一轮。
     } else if (!album.pinchAt || gap > HAND_PINCH_DOUBLE_MS) {
       const target = album.mode === "globe" ? albumClosestCity() : null;
-      if (album.mode === "globe" && !target) return true;
+      if (album.mode === "globe" && !target) {
+        albumDebugEvent("捏合达到阈值，但没有可进入的照片城市");
+        return true;
+      }
       album.pinchAt = now;
       album.pinchTarget = target;
       album.turnX = album.turnY = 0;
       album.globeSwipe = null;
       spinX = spinY = 0;
+      albumDebugEvent(`第 1 次捏合${target ? "，已锁定目标" : ""}`);
       albumUpdateTargetHint();
-    }
+    } else albumDebugEvent(`第 2 次捏合过快（间隔 ${Math.round(gap)} ms）`);
     return true;
   }
   if (album.pinchClosed) {
     album.pinchReleaseFrames = released ? album.pinchReleaseFrames + 1 : 0;
-    if (album.pinchReleaseFrames >= 2) album.pinchClosed = false;
+    if (album.pinchReleaseFrames >= 2) {
+      album.pinchClosed = false;
+      albumDebugEvent("松开已确认");
+    }
     return true;
   }
   if (album.pinchAt && now - album.pinchAt <= HAND_PINCH_DOUBLE_MS) return true;
   if (album.pinchAt) {
+    albumDebugEvent("等待第 2 次捏合超时");
     albumResetPinch();
     albumUpdateTargetHint();
     album.globeSwipe = null;
@@ -372,6 +466,7 @@ function albumHandleHands(results) {
   handCount = list.length;
   handSeen = list.length > 0;
   lastHandFrame = list.length ? frameCount : lastHandFrame;
+  albumDebugObserve(list);
   if (list.length >= 2) {
     album.multiHandCooldown = 6;
     albumResetPinch();
@@ -432,6 +527,7 @@ function albumWheel(delta) {
 }
 
 async function albumInit() {
+  albumDebugInit();
   document.getElementById("travel-add").onclick = () => document.getElementById("travel-input").click();
   document.getElementById("travel-input").onchange = albumImport;
   document.getElementById("travel-open").onclick = albumOpen;
@@ -444,8 +540,10 @@ async function albumInit() {
     if (!response.ok) throw new Error("照片服务未启动");
     album.photos = await response.json();
     albumRebuild();
+    albumDebugEvent(`照片服务已加载：${album.photos.length} 张照片、${albumNames().length} 个地点`);
   } catch (_) {
     document.getElementById("travel-count").textContent = "请用 python3 server.py 启动照片服务";
+    albumDebugEvent("照片服务不可用；请运行 python3 server.py");
   }
 }
 async function albumImport(event) {

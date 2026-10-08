@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>深空制图仪 · Cartograph</title>
-  <link rel="stylesheet" href="css/style.css?v=glass-inertia-4">
+  <link rel="stylesheet" href="css/style.css?v=gesture-debug-6">
   <script src="js/p5.min.js"></script>
   <!-- 手部识别库（MediaPipe Hands，本地文件，完全离线） -->
   <script src="assets/mediapipe/hands.js"></script>
@@ -43,6 +43,15 @@
     <p id="travel-count" role="status">读取相册中…</p>
     <div id="travel-cities" aria-label="有照片的城市"></div>
     <div id="travel-pending"></div>
+  </aside>
+
+  <aside id="gesture-debug" aria-label="手势诊断" hidden>
+    <strong>手势诊断 · 本机</strong>
+    <pre id="gesture-debug-readout">等待手部识别…</pre>
+    <button id="gesture-debug-copy" type="button">复制状态与事件</button>
+    <span id="gesture-debug-copy-status" role="status"></span>
+    <textarea id="gesture-debug-log" rows="7" readonly aria-label="手势事件记录"></textarea>
+    <small>仅记录数值和事件；刷新页面即清空。</small>
   </aside>
 
   <section id="travel-gallery" role="dialog" aria-label="城市照片" hidden>
@@ -113,7 +122,7 @@
   <div id="vignette"></div>
   <div id="grain"></div>
 
-  <script src="album.js?v=5"></script>
+  <script src="album.js?v=gesture-debug-6"></script>
   <script src="sketch.js?v=pinch-toggle-5"></script>
 </body>
 </html>

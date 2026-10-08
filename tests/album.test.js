@@ -4,10 +4,12 @@ const vm = require('node:vm');
 const elements = {};
 const context = vm.createContext({
   Math, Map, Object, console,
+  URLSearchParams, window: { location: { search: '?debug=1' } },
+  navigator: { clipboard: { writeText: async text => { context.copiedText = text; } } },
   CITIES: { 首尔: { lat: 37.57, lon: 126.98 }, 东京: { lat: 35.68, lon: 139.69 } }, places: [],
   HAND_PINCH_CLOSE_RATIO: 0.45, HAND_PINCH_RELEASE_RATIO: 0.58,
   HAND_PINCH_DOUBLE_MS: 1200, HAND_PINCH_MIN_GAP_MS: 180,
-  document: { getElementById: id => elements[id] ||= { textContent: '' } },
+  document: { body: { classList: { add() {} } }, getElementById: id => elements[id] ||= { textContent: '' } },
   rotX: -0.35, rotY: -1.8, zoomTarget: 1, ZOOM_MIN: 0.7, ZOOM_MAX: 3,
   constrain: (x, lo, hi) => Math.min(hi, Math.max(lo, x)),
   palmCenter: points => points[0],
@@ -46,13 +48,23 @@ for (let i = 0; i < 4; i++) feed([...one(0.3), ...one(0.3 + i * 0.06)], 100 + i 
 assert.equal(context.entered.length, 0, '双手距离变化不再切换模式');
 for (let i = 0; i < 6; i++) feed([], 250 + i * 33);
 
+const curled = pinch(true);
+curled[0].scores = { 8: 1, 12: 0.9, 16: 0.9, 20: 0.9 };
+feed(curled, 500);
+assert.match(elements['gesture-debug-readout'].textContent, /其他三指未伸开/);
+feed(pinch(false), 550);
+
 feed(pinch(true), 600);
 feed(pinch(true), 630);
 assert.equal(context.entered.length, 0, '长按一次不能算两次捏合');
 assert.equal(elements['travel-hint'].textContent, '再捏一次进入：首尔');
+assert.match(elements['gesture-debug-readout'].textContent, /拇指\/食指距离÷掌长：0\.30/);
+assert.match(elements['gesture-debug-log'].value, /第 1 次捏合，已锁定目标/);
 feed(pinch(false), 660);
 feed(pinch(false), 700);
+assert.match(elements['gesture-debug-log'].value, /松开已确认/);
 feed([], 730); // 短暂丢失跟踪时保留第一次捏合。
+assert.match(elements['gesture-debug-readout'].textContent, /未识别到手/);
 context.chosenCity = '东京';
 feed(pinch(true), 940);
 assert.deepEqual(context.entered, ['首尔'], '第二次捏合进入第一次锁定的城市');
@@ -132,4 +144,10 @@ feed(pinch(false), 6750);
 feed(pinch(false), 6790);
 feed(pinch(true), 7000);
 assert.equal(album.mode, 'album', '照片页不响应双捏合切换');
-console.log('PASS: 双捏合双向切换、目标锁定、城市与照片手势、双倍摆手惯性');
+assert.doesNotMatch(elements['gesture-debug-log'].value, /首尔|东京/, '诊断记录不包含城市名称或坐标');
+vm.runInContext('albumDebugInit()', context);
+elements['gesture-debug-copy'].onclick().then(() => {
+  assert.match(context.copiedText, /模式：album/);
+  assert.match(context.copiedText, /第 2 次捏合/);
+  console.log('PASS: 双捏合、城市与照片手势、惯性、诊断记录与复制');
+}).catch(error => { console.error(error); process.exitCode = 1; });
