@@ -28,7 +28,7 @@ brew install libheif
 
 | 状态 | 手势 | 页面操作 |
 | --- | --- | --- |
-| 全球浏览 | 只伸出食指并移动指尖，让地球惯性旋转；其余三指收起，食指与拇指捏合、分开、再捏合，进入右侧提示的城市 | 鼠标拖动地球、滚轮缩放、点击城市按钮 |
+| 全球浏览 | 只伸出食指并左右移动指尖，让地球绕地轴惯性旋转；其余三指收起，食指与拇指捏合、分开、再捏合，进入右侧提示的城市 | 鼠标拖动地球、滚轮缩放、点击城市按钮 |
 | 城市观察 | 握拳左右摆动切换有照片的地点；停稳后张开手掌打开相册；双捏合返回全球 | 点击城市按钮、「查看照片」或「返回全球」 |
 | 照片相册 | 张掌左右摆动翻页；握拳保持返回城市 | 上一张／下一张、方向键、`Esc` |
 
@@ -48,6 +48,6 @@ brew install libheif
 
 ## 切换版本
 
-先停止本地服务，再切换分支：`pinch-toggle-v5` 是当前旅行版，`glass-inertia-v4` 保留上一版双手切换操作，`main` 是原版地球仪。例如运行 `git switch glass-inertia-v4` 可以回退。切换分支不会删除被 Git 忽略的本地照片；返回旅行版后，仍需使用 `python3 server.py`。
+先停止本地服务，再切换分支：`axis-spin-city-fist-v10` 是当前本地测试版，`photo-open-fix-v9` 保留上一版手势，`glass-inertia-v4` 保留双手切换操作，`main` 是原版地球仪。例如运行 `git switch photo-open-fix-v9` 可以回退。切换分支不会删除被 Git 忽略的本地照片；返回旅行版后，仍需使用 `python3 server.py`。
 
 版权与第三方许可见 [LICENSE](LICENSE) 和 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。

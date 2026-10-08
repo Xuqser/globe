@@ -21,6 +21,7 @@ function albumDebugStatus(now) {
   if (now < album.gestureLockUntil) return `切换保护中，还剩 ${Math.ceil(album.gestureLockUntil - now)} ms`;
   if (album.mode === "album") return "照片模式不处理捏合";
   if (album.mode === "city" && albumDebug.pose === "open") return `张掌保持中，约 ${Math.max(0, Math.ceil(400 - (now - album.poseAt)))} ms 后打开照片`;
+  if (album.mode === "city" && albumDebug.pose === "fist" && now - album.poseAt > 220) return "握拳已准备，左右移动切城市";
   if (album.mode === "globe" && !albumNames().length) return "没有可进入的照片城市";
   if (album.pinchClosed) return `已捏合，等待松开（${album.pinchReleaseFrames}/2 帧）`;
   if (album.pinchAt && now - album.pinchAt <= HAND_PINCH_DOUBLE_MS) return `等待第二次捏合，还剩 ${Math.ceil(HAND_PINCH_DOUBLE_MS - (now - album.pinchAt))} ms`;
@@ -323,6 +324,7 @@ function albumSwitchCity(direction) {
   const names = albumNames();
   const index = names.indexOf(album.city);
   if (index < 0 || names.length < 2) return;
+  albumDebugEvent("握拳摆动，切换城市");
   albumEnterCity(names[(index + direction + names.length) % names.length]);
 }
 
@@ -382,14 +384,11 @@ function albumGlobeSwipe(x, y, now) {
     }
     return;
   }
-  // 摆手越快初速度越大；回手阶段不再读取位移，交给阻尼自然停下。
-  const speed = move => Math.min(0.16, Math.max(0.06, Math.abs(move) * 260 / Math.max(80, now - gesture.movementAt)));
-  if (Math.abs(dx) > 0.075 && Math.abs(dx) > Math.abs(dy) * 1.2) {
+  // 沿地轴拨动；回手阶段不再读取位移，交给阻尼自然停下。
+  const speed = move => Math.min(0.20, Math.max(0.09, Math.abs(move) * 260 / Math.max(80, now - gesture.movementAt)));
+  if (Math.abs(dx) > 0.055 && Math.abs(dx) > Math.abs(dy) * 1.2) {
     album.turnY = Math.sign(dx) * speed(dx);
     album.turnX = 0;
-  } else if (Math.abs(dy) > 0.075 && Math.abs(dy) > Math.abs(dx) * 1.2) {
-    album.turnX = Math.sign(dy) * HAND_TOUCH_Y * speed(dy) * 0.6;
-    album.turnY = 0;
   } else return;
   gesture.armed = false;
   gesture.triggeredAt = now;
@@ -400,11 +399,10 @@ function albumGlobeSwipe(x, y, now) {
 function albumUpdateGlobeTurn(scale) {
   if (frameCount % 12 === 0) albumUpdateTargetHint();
   if (album.mode !== "globe") return;
-  const decay = Math.pow(0.90, Math.min(scale, 2.5));
-  const travel = (1 - decay) / 0.10;
-  rotX += album.turnX * travel;
+  const decay = Math.pow(0.93, Math.min(scale, 2.5));
+  const travel = (1 - decay) / 0.07;
   rotY += album.turnY * travel;
-  album.turnX = Math.abs(album.turnX * decay) < 0.0005 ? 0 : album.turnX * decay;
+  album.turnX = 0;
   album.turnY = Math.abs(album.turnY * decay) < 0.0005 ? 0 : album.turnY * decay;
 }
 
@@ -519,6 +517,12 @@ function albumHandleHands(results) {
     album.swipeOrigin = x; album.swipeLastX = x; album.stillFrames = 0;
   }
   if (now < album.gestureLockUntil || tutorialOpen) { lastPalm = p; return; }
+  if (album.mode === "city" && pose === "fist" && now - album.poseAt > 220) {
+    album.fistReady = true;
+    const previousCity = album.city;
+    albumSwipe(x, now, albumSwitchCity);
+    if (album.city !== previousCity) { lastPalm = p; return; }
+  }
   if (album.mode === "city" && pose === "open" && now - album.poseAt > 400) {
     albumDebugEvent("张掌保持，打开照片");
     albumOpen();
@@ -540,10 +544,7 @@ function albumHandleHands(results) {
     }
   } else if (album.mode === "city") {
     spinX = spinY = 0;
-    if (pose === "fist" && now - album.poseAt > 220) {
-      album.fistReady = true;
-      albumSwipe(x, now, albumSwitchCity);
-    } else if (pose === "open" && album.fistReady && now - album.poseAt > 220) {
+    if (pose === "open" && album.fistReady && now - album.poseAt > 220) {
       albumOpen();
     }
   } else if (album.mode === "album") {

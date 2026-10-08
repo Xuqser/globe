@@ -122,7 +122,7 @@ feed(point(0.60), 3220); // 镜像后的食指尖 x 向左移动
 assert.ok(album.turnY < 0, '摆手产生一段地球转动');
 assert.equal(context.entered.length, 1, '食指摆动不能误触城市切换');
 const turn = album.turnY;
-assert.ok(Math.abs(turn + 0.16) < 1e-10, '快速摆手初速度为上一版上限的两倍');
+assert.ok(Math.abs(turn + 0.20) < 1e-10, '快速拨动有更大的初速度');
 feed(point(0.55), 3253);
 feed(point(0.50), 3286);
 assert.equal(album.turnY, turn, '收手不能反向转动');
@@ -139,6 +139,7 @@ assert.ok(firstStep > secondStep && secondStep > 0, '转动由快到慢且方向
 assert.ok(album.turnY > turn, '每帧衰减角速度');
 for (let i = 0; i < 90; i++) updateTurn(1);
 assert.equal(album.turnY, 0, '惯性最终停止');
+assert.ok(Math.abs(context.rotY - before) > 2, '同样一次横向拨动应带来更长的绕轴旋转');
 
 album.globeSwipe = null;
 album.turnY = 0;
@@ -147,7 +148,7 @@ feed(point(0.5), 4033);
 feed(point(0.5), 4066);
 feed(point(0.48), 4200);
 feed(point(0.42), 4600);
-assert.ok(Math.abs(album.turnY - 0.06) < 1e-10, '慢速摆手的最低初速度也翻倍');
+assert.ok(Math.abs(album.turnY - 0.09) < 1e-10, '慢速拨动也有足够的初速度');
 const baseRotation = context.rotY;
 album.turnY = -0.05;
 updateTurn(2);
@@ -160,18 +161,22 @@ assert.ok(Math.abs(context.rotY - combinedRotation) < 1e-10, '不同帧率下的
 
 album.globeSwipe = null;
 album.turnX = 0;
+const fixedTilt = context.rotX;
 feed(point(0.5), 4700);
 feed(point(0.5), 4733);
 feed(point(0.5), 4766);
 feed(point(0.5, 0.60), 4900);
-assert.notEqual(album.turnX, 0, '食指向上或向下移动也能拨动地球');
+updateTurn(1);
+assert.equal(context.rotX, fixedTilt, '食指上下滑动不能把视角推向两极');
+assert.equal(album.turnX, 0, '全球手势只绕地轴旋转');
 
 album.mode = 'city'; album.city = '首尔'; album.gestureLockUntil = 0;
 vm.runInContext('albumResetPinch(); albumResetGesture()', context);
-feed(one(0.5, 1.0), 5000);
-feed(one(0.5, 1.0), 5250);
-feed(one(0.6, 1.0), 5300);
-assert.equal(album.city, '东京', '城市里握拳摆动仍可切城');
+album.swipeArmed = false;
+for (let i = 0; i < 16; i++) feed(pinch(true), 5000 + i * 33);
+feed(pinch(true, 0.60), 5520);
+assert.equal(album.city, '东京', '握拳即使与捏合指尖重叠，横摆仍可切城');
+assert.match(elements['gesture-debug-log'].value, /握拳摆动，切换城市/);
 album.mode = 'city'; album.city = '首尔'; album.gestureLockUntil = 0;
 vm.runInContext('albumResetPinch(); albumResetGesture()', context);
 context.opened = 0;
