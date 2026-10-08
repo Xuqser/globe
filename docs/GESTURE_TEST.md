@@ -8,7 +8,7 @@
 
 ## 准备
 
-1. 在终端进入项目：`cd /Users/johnsonxu/globe`。运行 `git branch --show-current`，确认是 `axis-spin-city-fist-v10`；如果不是，运行 `git switch axis-spin-city-fist-v10`。
+1. 在终端进入项目：`cd globe`（或进入你的项目目录）。运行 `git branch --show-current`，确认是 `axis-spin-city-fist-v10`；如果不是，运行 `git switch axis-spin-city-fist-v10`。
 2. 用 `python3 server.py` 启动。若 8000 端口已被旧的 `python3 -m http.server` 占用，先到那个终端按 `Control + C`。
 3. 打开 [本机调试页](http://127.0.0.1:8000/?debug=1)，在浏览器里允许摄像头。右侧应显示照片数和至少 1 个地点；诊断日志应出现「照片服务已加载」。
 4. 让一只手完整地留在画面里，手掌朝向摄像头，先静止约 1 秒。诊断面板的「手数」应稳定为 `1`。测试期间先不要让第二只手入镜。

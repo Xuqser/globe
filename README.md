@@ -2,12 +2,12 @@
 
 把保存在电脑上的旅行照片放到地球仪上浏览。照片中的 GPS 用来归类旅行地点；可以转动地球、切换城市，再打开该城市的照片。照片和位置数据保存在本机，不提交到 GitHub。
 
-本分支 `pinch-toggle-v5` 在 [原版「深空制图仪」](https://github.com/Wencle-Sun/globe) 上加入了本地照片相册和三种操作状态：全球浏览、城市观察、照片相册。地球由 p5.js 绘制，浏览器内的 MediaPipe Hands 识别手部关键点；没有摄像头时也可以用鼠标和页面按钮操作。
+本分支 `axis-spin-city-fist-v10` 在 [原版「深空制图仪」](https://github.com/Wencle-Sun/globe) 上加入了本地照片相册和三种操作状态：全球浏览、城市观察、照片相册。地球由 p5.js 绘制，浏览器内的 MediaPipe Hands 识别手部关键点；没有摄像头时也可以用鼠标和页面按钮操作。[2026-10-08 更新说明与完整操作流程](docs/UPDATE_2026-10-08.md)记录了当前手势规则和回退方法。
 
 ## 在 macOS 上运行
 
 ```sh
-git clone -b pinch-toggle-v5 https://github.com/Xuqser/globe.git
+git clone -b axis-spin-city-fist-v10 https://github.com/Xuqser/globe.git
 cd globe
 python3 server.py
 ```
@@ -48,6 +48,6 @@ brew install libheif
 
 ## 切换版本
 
-先停止本地服务，再切换分支：`axis-spin-city-fist-v10` 是当前本地测试版，`photo-open-fix-v9` 保留上一版手势，`glass-inertia-v4` 保留双手切换操作，`main` 是原版地球仪。例如运行 `git switch photo-open-fix-v9` 可以回退。切换分支不会删除被 Git 忽略的本地照片；返回旅行版后，仍需使用 `python3 server.py`。
+先停止本地服务，再切换分支：`axis-spin-city-fist-v10` 是当前版本，`photo-open-fix-v9` 保留上一版本地手势，`glass-inertia-v4` 保留双手切换操作，`main` 是原版地球仪。例如运行 `git switch photo-open-fix-v9` 可以回退。切换分支不会删除被 Git 忽略的本地照片；返回旅行版后，仍需使用 `python3 server.py`。
 
 版权与第三方许可见 [LICENSE](LICENSE) 和 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
