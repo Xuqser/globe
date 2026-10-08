@@ -1,15 +1,15 @@
 /* Local travel album and mutually exclusive gesture states. */
 const album = {
   photos: [], groups: new Map(), mode: "globe", city: null, index: 0,
-  multiHandCooldown: 0, pinchClosed: false, pinchCloseFrames: 0, pinchReleaseFrames: 0, pinchAt: 0, pinchTarget: null,
-  globeSwipe: null, turnX: 0, turnY: 0, pose: "", poseAt: 0,
+  multiHandCooldown: 0, pinchClosed: false, pinchCloseFrames: 0, pinchCloseOrigin: null, pinchReleaseFrames: 0, pinchAt: 0, pinchTarget: null,
+  globeSwipe: null, pointFrames: 0, turnX: 0, turnY: 0, pose: "", poseAt: 0,
   fistReady: false, swipeOrigin: null, swipeLastX: null, swipeArmed: true, stillFrames: 0,
   gestureLockUntil: 0, lastGestureAt: 0
 };
 
 const albumDebug = {
   enabled: typeof window !== "undefined" && new URLSearchParams(window.location.search).get("debug") === "1",
-  handCount: null, pose: "—", ratio: null, otherOpen: null, lastRender: -Infinity, events: []
+  handCount: null, pose: "—", ratio: null, otherCurled: null, lastRender: -Infinity, events: []
 };
 
 function albumDebugStatus(now) {
@@ -23,7 +23,8 @@ function albumDebugStatus(now) {
   if (album.mode === "globe" && !albumNames().length) return "没有可进入的照片城市";
   if (album.pinchClosed) return `已捏合，等待松开（${album.pinchReleaseFrames}/2 帧）`;
   if (album.pinchAt && now - album.pinchAt <= HAND_PINCH_DOUBLE_MS) return `等待第二次捏合，还剩 ${Math.ceil(HAND_PINCH_DOUBLE_MS - (now - album.pinchAt))} ms`;
-  if (albumDebug.ratio != null && albumDebug.ratio < HAND_PINCH_CLOSE_RATIO && !albumDebug.otherOpen) return "指尖已接近，但其他三指未伸开";
+  if (albumDebug.ratio != null && albumDebug.ratio < HAND_PINCH_CLOSE_RATIO && !albumDebug.otherCurled) return "指尖已接近，但其他三指未收起";
+  if (albumDebug.ratio != null && albumDebug.ratio < HAND_PINCH_CLOSE_RATIO && albumDebug.pose === "point") return "食指仍伸直，按☝️旋转处理";
   return "等待捏合";
 }
 
@@ -38,7 +39,7 @@ function albumDebugRender(force = false) {
     `模式：${album.mode} · 有照片地点：${albumNames().length}`,
     `手数：${albumDebug.handCount == null ? "—" : albumDebug.handCount} · 手型：${albumDebug.pose}`,
     `拇指/食指距离÷掌长：${albumDebug.ratio == null ? "—" : albumDebug.ratio.toFixed(2)}（合 < 0.45，开 > 0.58）`,
-    `其他三指有伸开：${albumDebug.otherOpen == null ? "—" : albumDebug.otherOpen ? "是" : "否"}`,
+    `其他三指已收起：${albumDebug.otherCurled == null ? "—" : albumDebug.otherCurled ? "是" : "否"}`,
     `首次捏合：${album.pinchAt ? `${Math.round(now - album.pinchAt)} ms 前` : "未记录"}`,
     `状态：${albumDebugStatus(now)}`
   ].join("\n");
@@ -60,12 +61,11 @@ function albumDebugObserve(list) {
   const lm = list[0];
   albumDebug.pose = lm ? albumPose(lm) : "—";
   albumDebug.ratio = null;
-  albumDebug.otherOpen = null;
+  albumDebug.otherCurled = null;
   if (lm && lm[0] && lm[4] && lm[8] && lm[9]) {
     const palm = Math.hypot(lm[0].x - lm[9].x, lm[0].y - lm[9].y) || 0.001;
     albumDebug.ratio = Math.hypot(lm[4].x - lm[8].x, lm[4].y - lm[8].y) / palm;
-    albumDebug.otherOpen = fingerExtension(lm, 12, 10) > 1.02 ||
-      fingerExtension(lm, 16, 14) > 1.02 || fingerExtension(lm, 20, 18) > 1.02;
+    albumDebug.otherCurled = albumOtherCurled(lm);
   }
   if (previous !== list.length) albumDebugEvent(`识别到 ${list.length} 只手`);
   albumDebugRender();
@@ -199,7 +199,7 @@ function albumUpdateTargetHint() {
   const city = pending ? album.pinchTarget : albumClosestCity();
   document.getElementById("travel-hint").textContent = pending
     ? `再捏一次进入：${city}`
-    : city ? `单手摆动旋转 · 拇指与食指捏两次进入：${city}` : "先添加照片，再用拇指与食指捏两次进入城市";
+    : city ? `☝️食指摆动旋转 · 🤏捏两次进入：${city}` : "先添加照片，再用拇指与食指捏两次进入城市";
 }
 
 function albumUpdateMode() {
@@ -327,10 +327,16 @@ function albumSwitchCity(direction) {
 
 function albumResetGesture() {
   album.pose = ""; album.poseAt = 0; album.fistReady = false;
+  album.pointFrames = 0;
   album.swipeOrigin = null; album.swipeLastX = null; album.swipeArmed = true; album.stillFrames = 0;
+}
+function albumOtherCurled(lm) {
+  return fingerExtension(lm, 12, 10) < 1.06 &&
+    fingerExtension(lm, 16, 14) < 1.06 && fingerExtension(lm, 20, 18) < 1.06;
 }
 function albumPose(lm) {
   const scores = [[8, 6], [12, 10], [16, 14], [20, 18]].map(([tip, pip]) => fingerExtension(lm, tip, pip));
+  if (scores[0] > 1.10 && scores.slice(1).every(score => score < 1.06)) return "point";
   if (scores.every(score => score < 1.06)) return "fist";
   if (scores.every(score => score > 1.10)) return "open";
   return "other";
@@ -404,6 +410,7 @@ function albumUpdateGlobeTurn(scale) {
 function albumResetPinch() {
   album.pinchClosed = false;
   album.pinchCloseFrames = 0;
+  album.pinchCloseOrigin = null;
   album.pinchReleaseFrames = 0;
   album.pinchAt = 0;
   album.pinchTarget = null;
@@ -413,14 +420,21 @@ function albumHandlePinch(lm, now) {
   if (!lm[0] || !lm[4] || !lm[8] || !lm[9]) return false;
   const palm = Math.hypot(lm[0].x - lm[9].x, lm[0].y - lm[9].y) || 0.001;
   const ratio = Math.hypot(lm[4].x - lm[8].x, lm[4].y - lm[8].y) / palm;
-  const otherOpen = fingerExtension(lm, 12, 10) > 1.02 ||
-    fingerExtension(lm, 16, 14) > 1.02 || fingerExtension(lm, 20, 18) > 1.02;
-  const closed = ratio < HAND_PINCH_CLOSE_RATIO && otherOpen;
-  const released = ratio > HAND_PINCH_RELEASE_RATIO || !otherOpen;
-  if (!album.pinchClosed) album.pinchCloseFrames = closed ? album.pinchCloseFrames + 1 : 0;
+  const closed = ratio < HAND_PINCH_CLOSE_RATIO && albumOtherCurled(lm) &&
+    fingerExtension(lm, 8, 6) < 1.10;
+  const released = ratio > HAND_PINCH_RELEASE_RATIO;
+  if (!album.pinchClosed) {
+    const origin = album.pinchCloseOrigin;
+    if (!closed) { album.pinchCloseFrames = 0; album.pinchCloseOrigin = null; }
+    else if (!origin || Math.hypot(lm[0].x - origin.x, lm[0].y - origin.y) > 0.025) {
+      album.pinchCloseFrames = 1;
+      album.pinchCloseOrigin = { x: lm[0].x, y: lm[0].y };
+    } else album.pinchCloseFrames++;
+  }
   if (album.pinchCloseFrames >= 3 && !album.pinchClosed) {
     album.pinchClosed = true;
     album.pinchCloseFrames = 0;
+    album.pinchCloseOrigin = null;
     album.pinchReleaseFrames = 0;
     const gap = now - album.pinchAt;
     if (album.pinchAt && gap >= HAND_PINCH_MIN_GAP_MS && gap <= HAND_PINCH_DOUBLE_MS) {
@@ -489,6 +503,7 @@ function albumHandleHands(results) {
   }
   if (!list.length) {
     album.pinchCloseFrames = 0;
+    album.pinchCloseOrigin = null;
     album.globeSwipe = null;
     albumResetGesture();
     lastPalm = null;
@@ -509,7 +524,13 @@ function albumHandleHands(results) {
     return;
   }
   if (album.mode === "globe") {
-    albumGlobeSwipe(x, p.y, now);
+    if (pose === "point") {
+      album.pointFrames++;
+      if (album.pointFrames >= 3) albumGlobeSwipe(1 - list[0][8].x, list[0][8].y, now);
+    } else {
+      album.pointFrames = 0;
+      album.globeSwipe = null;
+    }
   } else if (album.mode === "city") {
     spinX = spinY = 0;
     if (pose === "fist" && now - album.poseAt > 220) {

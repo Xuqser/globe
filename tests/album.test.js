@@ -33,13 +33,21 @@ vm.runInContext(`
 `, context);
 const handle = vm.runInContext('albumHandleHands', context);
 const one = (x, score = 1.2) => [Object.assign([{ x, y: 0.5 }], { scores: { 8: score, 12: score, 16: score, 20: score } })];
+function point(x, y = 0.5) {
+  const points = Array.from({ length: 21 }, () => ({ x: 0.5, y: 0.5 }));
+  points[8] = { x, y };
+  points[4] = { x: 0.7, y: 0.45 };
+  points[9] = { x: 0.5, y: 0.6 };
+  points.scores = { 8: 1.2, 12: 1, 16: 1, 20: 1 };
+  return [points];
+}
 function pinch(closed, x = 0.5) {
   const points = Array.from({ length: 21 }, () => ({ x, y: 0.5 }));
   points[0] = { x, y: 0.5 };
   points[9] = { x, y: 0.6 };
   points[4] = { x: x - 0.015, y: 0.45 };
   points[8] = { x: x + (closed ? 0.015 : 0.07), y: 0.45 };
-  points.scores = { 8: closed ? 1 : 1.2, 12: 1.2, 16: 1.2, 20: 1.2 };
+  points.scores = { 8: closed ? 1 : 1.2, 12: 1, 16: 1, 20: 1 };
   return [points];
 }
 function feed(hands, time) { context.now = time; handle({ multiHandLandmarks: hands }); }
@@ -48,18 +56,17 @@ for (let i = 0; i < 4; i++) feed([...one(0.3), ...one(0.3 + i * 0.06)], 100 + i 
 assert.equal(context.entered.length, 0, '双手距离变化不再切换模式');
 for (let i = 0; i < 6; i++) feed([], 250 + i * 33);
 
-const curled = pinch(true);
-curled[0].scores = { 8: 1, 12: 0.9, 16: 0.9, 20: 0.9 };
-feed(curled, 500);
-assert.match(elements['gesture-debug-readout'].textContent, /其他三指未伸开/);
+const extended = pinch(true);
+extended[0].scores = { 8: 1, 12: 1.2, 16: 1.2, 20: 1.2 };
+feed(extended, 500);
+assert.match(elements['gesture-debug-readout'].textContent, /其他三指未收起/);
 feed(pinch(false), 550);
 
 feed(pinch(true, 0.52), 560);
 feed(pinch(true, 0.56), 570);
-feed(pinch(false, 0.60), 580);
-assert.notEqual(album.turnY, 0, '短暂指尖误识别不应阻断正常摆手');
+feed(pinch(true, 0.60), 580);
 feed(pinch(false), 590);
-assert.doesNotMatch(elements['gesture-debug-log'].value || '', /第 1 次捏合/, '摆手时的短暂指尖误识别不能算捏合');
+assert.doesNotMatch(elements['gesture-debug-log'].value || '', /第 1 次捏合/, '移动中的指尖靠近不能算捏合');
 
 feed(pinch(true), 600);
 feed(pinch(true), 630);
@@ -101,13 +108,23 @@ feed(pinch(false), 2899);
 const pose = vm.runInContext('albumPose', context);
 assert.equal(pose(one(0.5, 1.0)[0]), 'fist');
 assert.equal(pose(one(0.5, 1.2)[0]), 'open');
-for (let i = 0; i < 6; i++) feed(one(0.5), 3000 + i * 33);
-feed(one(0.60), 3220); // 镜像后的 x 向左移动
+assert.equal(pose(point(0.5)[0]), 'point');
+const pinchEvents = (elements['gesture-debug-log'].value.match(/第 1 次捏合/g) || []).length;
+for (let i = 0; i < 3; i++) {
+  const near = point(0.5);
+  near[0][4] = { x: 0.515, y: 0.5 };
+  feed(near, 2910 + i * 33);
+}
+assert.equal((elements['gesture-debug-log'].value.match(/第 1 次捏合/g) || []).length, pinchEvents,
+  '伸直食指即使与拇指在画面中重叠也不能算捏合');
+for (let i = 0; i < 6; i++) feed(point(0.5), 3000 + i * 33);
+feed(point(0.60), 3220); // 镜像后的食指尖 x 向左移动
 assert.ok(album.turnY < 0, '摆手产生一段地球转动');
+assert.equal(context.entered.length, 1, '食指摆动不能误触城市切换');
 const turn = album.turnY;
 assert.ok(Math.abs(turn + 0.16) < 1e-10, '快速摆手初速度为上一版上限的两倍');
-feed(one(0.55), 3253);
-feed(one(0.50), 3286);
+feed(point(0.55), 3253);
+feed(point(0.50), 3286);
 assert.equal(album.turnY, turn, '收手不能反向转动');
 feed([], 3320);
 assert.equal(album.turnY, turn, '手离开画面后惯性继续');
@@ -125,9 +142,11 @@ assert.equal(album.turnY, 0, '惯性最终停止');
 
 album.globeSwipe = null;
 album.turnY = 0;
-feed(one(0.5), 4000);
-feed(one(0.48), 4200);
-feed(one(0.42), 4600);
+feed(point(0.5), 4000);
+feed(point(0.5), 4033);
+feed(point(0.5), 4066);
+feed(point(0.48), 4200);
+feed(point(0.42), 4600);
 assert.ok(Math.abs(album.turnY - 0.06) < 1e-10, '慢速摆手的最低初速度也翻倍');
 const baseRotation = context.rotY;
 album.turnY = -0.05;
@@ -138,6 +157,14 @@ album.turnY = -0.05;
 updateTurn(1);
 updateTurn(1);
 assert.ok(Math.abs(context.rotY - combinedRotation) < 1e-10, '不同帧率下的阻尼保持一致');
+
+album.globeSwipe = null;
+album.turnX = 0;
+feed(point(0.5), 4700);
+feed(point(0.5), 4733);
+feed(point(0.5), 4766);
+feed(point(0.5, 0.60), 4900);
+assert.notEqual(album.turnX, 0, '食指向上或向下移动也能拨动地球');
 
 album.mode = 'city'; album.city = '首尔'; album.gestureLockUntil = 0;
 vm.runInContext('albumResetPinch(); albumResetGesture()', context);
