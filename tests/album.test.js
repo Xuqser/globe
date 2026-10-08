@@ -54,34 +54,49 @@ feed(curled, 500);
 assert.match(elements['gesture-debug-readout'].textContent, /其他三指未伸开/);
 feed(pinch(false), 550);
 
+feed(pinch(true, 0.52), 560);
+feed(pinch(true, 0.56), 570);
+feed(pinch(false, 0.60), 580);
+assert.notEqual(album.turnY, 0, '短暂指尖误识别不应阻断正常摆手');
+feed(pinch(false), 590);
+assert.doesNotMatch(elements['gesture-debug-log'].value || '', /第 1 次捏合/, '摆手时的短暂指尖误识别不能算捏合');
+
 feed(pinch(true), 600);
 feed(pinch(true), 630);
 assert.equal(context.entered.length, 0, '长按一次不能算两次捏合');
+assert.doesNotMatch(elements['gesture-debug-log'].value || '', /第 1 次捏合/, '闭合需要连续三帧');
+feed(pinch(true), 660);
 assert.equal(elements['travel-hint'].textContent, '再捏一次进入：首尔');
 assert.match(elements['gesture-debug-readout'].textContent, /拇指\/食指距离÷掌长：0\.30/);
 assert.match(elements['gesture-debug-log'].value, /第 1 次捏合，已锁定目标/);
-feed(pinch(false), 660);
-feed(pinch(false), 700);
+feed(pinch(false), 690);
+feed(pinch(false), 720);
 assert.match(elements['gesture-debug-log'].value, /松开已确认/);
-feed([], 730); // 短暂丢失跟踪时保留第一次捏合。
+feed([], 750); // 短暂丢失跟踪时保留第一次捏合。
 assert.match(elements['gesture-debug-readout'].textContent, /未识别到手/);
 context.chosenCity = '东京';
 feed(pinch(true), 940);
+feed(pinch(true), 970);
+feed(pinch(true), 1000);
 assert.deepEqual(context.entered, ['首尔'], '第二次捏合进入第一次锁定的城市');
 assert.equal(context.zoomTarget, 1, '切换模式不依赖缩放倍率');
-feed(pinch(true), 970);
+feed(pinch(true), 1030);
 assert.equal(context.exited, 0, '持续捏住不会立即反向切换');
 
-feed(pinch(false), 1600);
-feed(pinch(false), 1633);
-feed(pinch(true), 1700);
+feed(pinch(false), 1700);
+feed(pinch(false), 1733);
+feed(pinch(true), 1800);
+feed(pinch(true), 1833);
+feed(pinch(true), 1866);
 assert.equal(elements['travel-hint'].textContent, '再捏一次返回全球');
-feed(pinch(false), 1750);
-feed(pinch(false), 1783);
-feed(pinch(true), 2000);
+feed(pinch(false), 1900);
+feed(pinch(false), 1933);
+feed(pinch(true), 2150);
+feed(pinch(true), 2183);
+feed(pinch(true), 2216);
 assert.equal(context.exited, 1, '城市中双捏合返回全球');
-feed(pinch(false), 2660);
-feed(pinch(false), 2693);
+feed(pinch(false), 2866);
+feed(pinch(false), 2899);
 
 const pose = vm.runInContext('albumPose', context);
 assert.equal(pose(one(0.5, 1.0)[0]), 'fist');

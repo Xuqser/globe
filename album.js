@@ -1,7 +1,7 @@
 /* Local travel album and mutually exclusive gesture states. */
 const album = {
   photos: [], groups: new Map(), mode: "globe", city: null, index: 0,
-  multiHandCooldown: 0, pinchClosed: false, pinchReleaseFrames: 0, pinchAt: 0, pinchTarget: null,
+  multiHandCooldown: 0, pinchClosed: false, pinchCloseFrames: 0, pinchReleaseFrames: 0, pinchAt: 0, pinchTarget: null,
   globeSwipe: null, turnX: 0, turnY: 0, pose: "", poseAt: 0,
   fistReady: false, swipeOrigin: null, swipeLastX: null, swipeArmed: true, stillFrames: 0,
   gestureLockUntil: 0, lastGestureAt: 0
@@ -403,6 +403,7 @@ function albumUpdateGlobeTurn(scale) {
 
 function albumResetPinch() {
   album.pinchClosed = false;
+  album.pinchCloseFrames = 0;
   album.pinchReleaseFrames = 0;
   album.pinchAt = 0;
   album.pinchTarget = null;
@@ -416,8 +417,10 @@ function albumHandlePinch(lm, now) {
     fingerExtension(lm, 16, 14) > 1.02 || fingerExtension(lm, 20, 18) > 1.02;
   const closed = ratio < HAND_PINCH_CLOSE_RATIO && otherOpen;
   const released = ratio > HAND_PINCH_RELEASE_RATIO || !otherOpen;
-  if (closed && !album.pinchClosed) {
+  if (!album.pinchClosed) album.pinchCloseFrames = closed ? album.pinchCloseFrames + 1 : 0;
+  if (album.pinchCloseFrames >= 3 && !album.pinchClosed) {
     album.pinchClosed = true;
+    album.pinchCloseFrames = 0;
     album.pinchReleaseFrames = 0;
     const gap = now - album.pinchAt;
     if (album.pinchAt && gap >= HAND_PINCH_MIN_GAP_MS && gap <= HAND_PINCH_DOUBLE_MS) {
@@ -485,6 +488,7 @@ function albumHandleHands(results) {
     return; // 两手变成单手后，稍等几帧再接受新动作。
   }
   if (!list.length) {
+    album.pinchCloseFrames = 0;
     album.globeSwipe = null;
     albumResetGesture();
     lastPalm = null;
