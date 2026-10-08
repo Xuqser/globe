@@ -20,6 +20,7 @@ function albumDebugStatus(now) {
   if (tutorialOpen) return "教程打开，手势暂停";
   if (now < album.gestureLockUntil) return `切换保护中，还剩 ${Math.ceil(album.gestureLockUntil - now)} ms`;
   if (album.mode === "album") return "照片模式不处理捏合";
+  if (album.mode === "city" && albumDebug.pose === "open") return `张掌保持中，约 ${Math.max(0, Math.ceil(400 - (now - album.poseAt)))} ms 后打开照片`;
   if (album.mode === "globe" && !albumNames().length) return "没有可进入的照片城市";
   if (album.pinchClosed) return `已捏合，等待松开（${album.pinchReleaseFrames}/2 帧）`;
   if (album.pinchAt && now - album.pinchAt <= HAND_PINCH_DOUBLE_MS) return `等待第二次捏合，还剩 ${Math.ceil(HAND_PINCH_DOUBLE_MS - (now - album.pinchAt))} ms`;
@@ -518,8 +519,14 @@ function albumHandleHands(results) {
     album.swipeOrigin = x; album.swipeLastX = x; album.stillFrames = 0;
   }
   if (now < album.gestureLockUntil || tutorialOpen) { lastPalm = p; return; }
+  if (album.mode === "city" && pose === "open" && now - album.poseAt > 400) {
+    albumDebugEvent("张掌保持，打开照片");
+    albumOpen();
+    lastPalm = p;
+    return;
+  }
   if (album.mode !== "album" && albumHandlePinch(list[0], now)) {
-    albumResetGesture();
+    if (album.mode === "globe") albumResetGesture();
     lastPalm = p;
     return;
   }
